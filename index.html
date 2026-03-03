@@ -343,13 +343,25 @@ const ARROW_SPEED=4.5;
 
 function mkArcher(cam,plY){
   const side=Math.random()<0.5?'left':'right';
-  const x=side==='left'?WALL-4:W-WALL+4;
+  // Perch: a small stone ledge jutting from the wall
+  const x=side==='left'?WALL+2:W-WALL-2;
   const wy=cam+(Math.random()-0.3)*H*1.5;
   return{x,wy,side,shootTimer:Math.floor(Math.random()*ARCHER_SHOOT_INTERVAL),frame:0,alive:true};
 }
 
-function hasLOS(s,ax,awy,px,py){
-  const dx=px-ax,dy=py-awy,steps=40;
+function hasLOS(s,ax,awy,px,py,side){
+  // 180-degree FOV: archer faces inward (left archer faces right, right faces left).
+  // Player must be on the correct side horizontally (or directly above/below).
+  // "directly above/below" = within a generous horizontal band so vertical shots work.
+  const facingRight=side==='left';
+  const dx=px-ax;
+  // Allow shots if player is in the forward hemisphere OR within ±20px horizontally
+  // (so the archer can shoot straight up/down when player is almost directly above).
+  if(facingRight&&dx<-20) return false;   // player is behind left-wall archer
+  if(!facingRight&&dx>20) return false;   // player is behind right-wall archer
+
+  // Ray cast — check platform occlusion
+  const dy=py-awy,steps=40;
   for(let i=1;i<steps;i++){
     const rx=ax+dx*(i/steps),ry=awy+dy*(i/steps);
     for(const p of s.plats) if(rx>p.x&&rx<p.x+p.w&&ry>p.y&&ry<p.y+p.h) return false;
@@ -364,10 +376,24 @@ function updateArchers(s){
     if(ar.shootTimer<=0){
       ar.shootTimer=ARCHER_SHOOT_INTERVAL;
       const asy=ar.wy-s.cam;
-      if(asy>-80&&asy<H+80&&hasLOS(s,ar.x,ar.wy,pl.x,pl.y)){
-        const dx=pl.x-ar.x,dy=pl.y-ar.wy,dist=Math.sqrt(dx*dx+dy*dy)||1;
-        const vx=(dx/dist)*ARROW_SPEED,vy=(dy/dist)*ARROW_SPEED-Math.abs(dx/dist)*1.5;
-        s.arrows.push({x:ar.x,wy:ar.wy,vx,vy,dead:false});
+      if(asy>-80&&asy<H+80&&hasLOS(s,ar.x,ar.wy,pl.x,pl.y,ar.side)){
+        // Arrow spawns from bow position (inset from wall, at torso height)
+        const bowOffX = ar.side==='left' ? 26 : -26;
+        const bowWy   = ar.wy - 30; // bow is ~30px above feet (torso/arm height)
+        const dx=pl.x-(ar.x+bowOffX), dy=pl.y-bowWy;
+        const dist=Math.sqrt(dx*dx+dy*dy)||1;
+        // Gravity-compensated aim: solve for launch angle that hits target
+        // using ballistic formula  vy0 = dy/t - 0.5*g*t,  vx0 = dx/t
+        // pick travel time t = dist / ARROW_SPEED, then correct vy for gravity drop
+        const g=0.18;
+        const t=dist/ARROW_SPEED;
+        const vx=(dx/dist)*ARROW_SPEED;
+        const vy=dy/t - 0.5*g*t;  // compensate for gravity over travel time
+        // Clamp so arrows don't go absurdly fast on very close shots
+        const spd=Math.sqrt(vx*vx+vy*vy);
+        const maxSpd=ARROW_SPEED*2.2;
+        const scale=spd>maxSpd?maxSpd/spd:1;
+        s.arrows.push({x:ar.x+bowOffX, wy:bowWy, vx:vx*scale, vy:vy*scale, dead:false});
       }
     }
   }
@@ -602,132 +628,124 @@ function drawSpikes(p){
   }
 }
 
-// ── Skeleton Archer (new detailed art) ────────────────────────────────────────
+// ── Skeleton Archer — hooded, crouching, bow-forward ─────────────────────────
 function drawArcher(ar){
   const sy=(ar.wy-S.cam)|0;
-  if(sy<-60||sy>H+60) return;
+  if(sy<-80||sy>H+80) return;
 
-  // Facing direction: left-side archer faces right (+1), right-side faces left (-1)
   const dir=ar.side==='left'?1:-1;
-  const bx=ar.x|0; // base x (embedded in wall edge)
+  const bx=ar.x|0;
 
-  // Eerie green eye glow behind skeleton
-  const eyeGlow=ctx.createRadialGradient(bx,sy-22,0,bx,sy-22,14);
-  eyeGlow.addColorStop(0,'rgba(80,255,100,0.18)');eyeGlow.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle=eyeGlow;ctx.beginPath();ctx.arc(bx,sy-22,14,0,Math.PI*2);ctx.fill();
+  const charging=ar.shootTimer<70;
+  const chargeT=charging?Math.max(0,1-(ar.shootTimer/70)):0;
 
-  // ── Shadow behind figure ──
-  ctx.fillStyle='rgba(0,0,0,0.3)';ctx.fillRect(bx-8,sy-38,16,38);
-
-  // ── Legs ──
-  ctx.fillStyle='#b0a898'; // bone
-  // Left leg
-  ctx.fillRect(bx-5,sy-12,4,12);
-  ctx.fillStyle='#888';ctx.fillRect(bx-2,sy-12,1,10); // shadow seam
-  // Right leg
-  ctx.fillStyle='#b0a898';ctx.fillRect(bx+1,sy-12,4,12);
-  ctx.fillStyle='#888';ctx.fillRect(bx+4,sy-12,1,10);
-  // Knee joints (darker knobbles)
-  ctx.fillStyle='#8a8078';ctx.fillRect(bx-6,sy-6,5,3);ctx.fillRect(bx,sy-6,5,3);
-  // Feet
-  ctx.fillStyle='#706860';ctx.fillRect(bx-6,sy,6,2);ctx.fillRect(bx+1,sy,6,2);
-
-  // ── Pelvis ──
-  ctx.fillStyle='#b0a898';ctx.fillRect(bx-6,sy-14,12,4);
-  ctx.fillStyle='#888';ctx.fillRect(bx-1,sy-14,2,4); // pelvis split
-
-  // ── Tattered loincloth ──
-  ctx.fillStyle='#4a3a2a';ctx.fillRect(bx-4,sy-13,8,7);
-  ctx.fillStyle='#3a2a1a';ctx.fillRect(bx-4,sy-9,3,4);ctx.fillRect(bx+1,sy-9,3,5);
-
-  // ── Ribcage / torso ──
-  ctx.fillStyle='#b0a898';ctx.fillRect(bx-5,sy-26,10,12); // main torso block
-  // Rib lines (dark grooves)
-  ctx.fillStyle='#7a7268';
-  for(let r=0;r<3;r++){
-    ctx.fillRect(bx-5,sy-24+r*4,10,1); // horizontal rib groove
+  // ── Stone perch jutting from the wall ──
+  const perchW=22, perchH=8;
+  const perchX=ar.side==='left'?0:W-WALL-perchW; // flush with wall interior
+  // Main stone block
+  ctx.fillStyle='#4a4540';ctx.fillRect(perchX,sy-2,perchW,perchH);
+  // Top face (lighter)
+  ctx.fillStyle='#6a6258';ctx.fillRect(perchX,sy-2,perchW,3);
+  // Top highlight
+  ctx.fillStyle='#7a7268';ctx.fillRect(perchX,sy-2,perchW,1);
+  // Stone block seam
+  ctx.fillStyle='#33302a';ctx.fillRect(perchX+perchW/2,sy-2,1,perchH);
+  // Corbel support underneath (wedge shape approximated with rects)
+  ctx.fillStyle='#3a3530';
+  if(ar.side==='left'){
+    ctx.fillRect(WALL,sy+perchH,10,4);
+    ctx.fillRect(WALL,sy+perchH+4,6,3);
+  } else {
+    ctx.fillRect(W-WALL-10,sy+perchH,10,4);
+    ctx.fillRect(W-WALL-6,sy+perchH+4,6,3);
   }
-  // Sternum
-  ctx.fillStyle='#c8c0b8';ctx.fillRect(bx-1,sy-26,2,12);
-  // Spine shadow down back
-  ctx.fillStyle='#8a8278';ctx.fillRect(bx+(dir>0?3:-4),sy-26,2,26);
+  // Perch shadow
+  ctx.fillStyle='rgba(0,0,0,0.35)';ctx.fillRect(perchX,sy+perchH,perchW,3);
 
-  // ── Collar bones ──
-  ctx.fillStyle='#c0b8b0';ctx.fillRect(bx-6,sy-27,5,2);ctx.fillRect(bx+1,sy-27,5,2);
+  ctx.save();
+  if(dir===-1){ctx.translate(bx*2,0);ctx.scale(-1,1);}
+
+  const ox=bx;
+
+  // ── Ambient skull glow ──
+  const glow=ctx.createRadialGradient(ox+2,sy-28,0,ox+2,sy-28,18);
+  glow.addColorStop(0,'rgba(60,220,80,0.22)');glow.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=glow;ctx.beginPath();ctx.arc(ox+2,sy-28,18,0,Math.PI*2);ctx.fill();
+
+  // ── Crouching legs ──
+  ctx.fillStyle='#8a8278';
+  ctx.fillRect(ox-3,sy-8,4,8);ctx.fillRect(ox-4,sy-2,6,2);
+  ctx.fillRect(ox+1,sy-10,4,10);ctx.fillRect(ox+1,sy-1,6,2);
+  ctx.fillStyle='#706860';ctx.fillRect(ox+1,sy-5,3,3);
+
+  // ── Dark hooded cloak ──
+  ctx.fillStyle='#2a2838';
+  ctx.fillRect(ox-7,sy-32,16,22);
+  ctx.fillRect(ox-9,sy-28,4,20);ctx.fillRect(ox+8,sy-26,4,18);
+  ctx.fillStyle='#221e2e';
+  ctx.fillRect(ox-9,sy-10,3,6);ctx.fillRect(ox-5,sy-8,3,8);
+  ctx.fillRect(ox,sy-8,3,7);ctx.fillRect(ox+5,sy-10,3,5);ctx.fillRect(ox+8,sy-9,3,6);
+  ctx.fillStyle='#3a3650';
+  ctx.fillRect(ox-5,sy-32,2,20);ctx.fillRect(ox+2,sy-30,2,16);
+
+  // ── Hood ──
+  ctx.fillStyle='#222030';
+  ctx.fillRect(ox-6,sy-44,14,14);ctx.fillRect(ox-5,sy-47,12,5);
+  ctx.fillRect(ox-4,sy-49,10,3);ctx.fillRect(ox-3,sy-50,8,2);
+  ctx.fillStyle='#111020';ctx.fillRect(ox-2,sy-44,8,6);
+  ctx.fillStyle='#34304a';ctx.fillRect(ox-6,sy-46,3,12);
 
   // ── Skull ──
-  // Cranium
-  ctx.fillStyle='#d0c8be';ctx.fillRect(bx-5,sy-38,10,9);
-  // Round top
-  ctx.fillStyle='#d0c8be';ctx.fillRect(bx-4,sy-40,8,3);ctx.fillRect(bx-3,sy-41,6,2);
-  // Cheekbones / jaw
-  ctx.fillStyle='#b8b0a8';ctx.fillRect(bx-5,sy-31,10,4);
-  ctx.fillStyle='#d0c8be';ctx.fillRect(bx-4,sy-31,8,3);
-  // Jaw separate piece (slightly lower/darker)
-  ctx.fillStyle='#a8a098';ctx.fillRect(bx-4,sy-30,8,4);
-  // Teeth
-  ctx.fillStyle='#e8e0d0';
-  for(let t=0;t<4;t++) ctx.fillRect(bx-4+t*2,sy-28,1,2);
-  // Nasal cavity
-  ctx.fillStyle='#222';ctx.fillRect(bx-1,sy-34,2,3);
-  // Eye sockets (dark hollows with green glint)
-  ctx.fillStyle='#111';ctx.fillRect(bx-4,sy-37,3,4);ctx.fillRect(bx+1,sy-37,3,4);
-  // Green eye glow in sockets
-  ctx.fillStyle='rgba(80,255,80,0.7)';ctx.fillRect(bx-3,sy-36,2,2);ctx.fillRect(bx+2,sy-36,2,2);
-  // Temple cracks
-  ctx.fillStyle='#8a8280';ctx.fillRect(bx-5,sy-36,1,2);ctx.fillRect(bx+4,sy-36,1,3);
+  ctx.fillStyle='#ddd8c8';
+  ctx.fillRect(ox-3,sy-43,9,8);ctx.fillRect(ox-2,sy-45,7,3);ctx.fillRect(ox-1,sy-46,5,2);
+  ctx.fillStyle='#b8b2a2';ctx.fillRect(ox+4,sy-43,2,7);ctx.fillRect(ox-3,sy-43,1,7);
+  ctx.fillStyle='#ccc6b6';ctx.fillRect(ox-4,sy-37,4,4);ctx.fillRect(ox+3,sy-37,4,4);
+  ctx.fillStyle='#b8b2a2';ctx.fillRect(ox-3,sy-36,9,5);
+  ctx.fillStyle='#a8a292';ctx.fillRect(ox-2,sy-34,8,3);
+  ctx.fillStyle='#eeeade';
+  ctx.fillRect(ox-2,sy-34,2,3);ctx.fillRect(ox+1,sy-34,2,3);ctx.fillRect(ox+4,sy-34,2,3);
+  ctx.fillStyle='#888';ctx.fillRect(ox,sy-34,1,2);ctx.fillRect(ox+3,sy-34,1,2);
+  ctx.fillStyle='#222';ctx.fillRect(ox,sy-38,3,4);
+  ctx.fillStyle='#111';ctx.fillRect(ox-3,sy-42,4,5);ctx.fillRect(ox+2,sy-42,4,5);
+  ctx.fillStyle='#1a1a1a';ctx.fillRect(ox-4,sy-41,2,3);ctx.fillRect(ox+5,sy-41,2,3);
+  ctx.fillStyle='rgba(80,255,90,0.9)';ctx.fillRect(ox-2,sy-41,2,3);ctx.fillRect(ox+3,sy-41,2,3);
+  ctx.fillStyle='rgba(180,255,180,0.95)';ctx.fillRect(ox-2,sy-40,1,1);ctx.fillRect(ox+3,sy-40,1,1);
 
-  // ── Bow arm (extended outward toward player) ──
-  const bowReach=dir*18;
-  // Shoulder joint
-  ctx.fillStyle='#b0a898';ctx.fillRect(bx+dir*4,sy-26,4,3);
-  // Upper arm bone
-  ctx.fillStyle='#b0a898';ctx.fillRect(bx+dir*4,sy-26,dir*8,2);
-  // Elbow joint knobble
-  ctx.fillStyle='#8a8278';ctx.fillRect(bx+dir*10,sy-27,3,3);
-  // Forearm
-  ctx.fillStyle='#b0a898';ctx.fillRect(bx+dir*11,sy-27,dir*8,2);
-  // Wrist / bony hand
-  ctx.fillStyle='#c0b8b0';ctx.fillRect(bx+bowReach-dir,sy-28,2,3);
+  // ── Bow arm ──
+  ctx.fillStyle='#2a2838';ctx.fillRect(ox+4,sy-30,10,5);
+  ctx.fillStyle='#ccc6b6';ctx.fillRect(ox+12,sy-30,4,4);
+  ctx.fillRect(ox+14,sy-32,3,2);ctx.fillRect(ox+14,sy-28,3,2);
 
   // ── Bow ──
-  const bowX=bx+bowReach;
-  ctx.strokeStyle='#7a5a30';ctx.lineWidth=2.5;
-  ctx.beginPath();ctx.arc(bowX,sy-24,10,dir>0?-Math.PI*0.7:-Math.PI*0.3,dir>0?Math.PI*0.7:Math.PI*1.3);ctx.stroke();
-  // Bowstring
-  ctx.strokeStyle='#c8b88a';ctx.lineWidth=0.8;
-  ctx.beginPath();ctx.moveTo(bowX,sy-34);ctx.lineTo(bowX,sy-14);ctx.stroke();
-  // Bow grip wrap
-  ctx.fillStyle='#5a4020';ctx.fillRect(bowX-1,sy-27,2,6);
+  const bowX=ox+18;
+  ctx.strokeStyle='#8b6020';ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(bowX,sy-40);ctx.quadraticCurveTo(bowX+8,sy-30,bowX,sy-20);ctx.stroke();
+  ctx.strokeStyle='#6a4810';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(bowX+1,sy-40);ctx.quadraticCurveTo(bowX+7,sy-30,bowX+1,sy-20);ctx.stroke();
+  ctx.fillStyle='#5a3818';ctx.fillRect(bowX-1,sy-33,3,7);
+  ctx.fillStyle='#7a5030';ctx.fillRect(bowX-1,sy-33,1,7);
+  const pull=charging?chargeT*5:0;
+  ctx.strokeStyle='#d4c88e';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(bowX,sy-40);ctx.lineTo(bowX-pull,sy-30);ctx.lineTo(bowX,sy-20);ctx.stroke();
 
-  // ── Rear arm / quiver ──
-  // Rear upper arm
-  ctx.fillStyle='#a0988e';ctx.fillRect(bx-dir*4,sy-26,dir*-6,2);
-  // Quiver on back
-  ctx.fillStyle='#4a3018';ctx.fillRect(bx-dir*8,sy-30,4,14);
-  ctx.fillStyle='#5a4028';ctx.fillRect(bx-dir*8,sy-30,4,3);
-  // Arrow shafts sticking out of quiver
-  ctx.fillStyle='#8a6a30';
-  for(let q=0;q<3;q++) ctx.fillRect(bx-dir*7+q,sy-38,1,10);
-  ctx.fillStyle='#888'; // arrowheads
-  for(let q=0;q<3;q++) ctx.fillRect(bx-dir*7+q,sy-40,1,2);
-
-  // ── Nocked arrow (shows when about to fire) ──
-  if(ar.shootTimer<60){
-    const drawArrowNocked=Math.floor(S.tick/4)%2===0; // flicker as skeleton draws
-    if(drawArrowNocked||ar.shootTimer<20){
-      const t=1-(ar.shootTimer/60);
-      ctx.globalAlpha=0.7+t*0.3;
-      const pullback=dir*(-t*4); // string pulls back
-      ctx.strokeStyle='#c8b88a';ctx.lineWidth=0.8;
-      ctx.beginPath();ctx.moveTo(bowX+pullback,sy-34);ctx.lineTo(bx+dir*12,sy-24);ctx.lineTo(bowX+pullback,sy-14);ctx.stroke();
-      ctx.fillStyle='#cc8833';ctx.fillRect(bx+dir*12,sy-25,dir*12,2); // shaft
-      ctx.fillStyle='#aaa';ctx.fillRect(bx+dir*22,sy-26,dir*3,4); // head
-      // orange tension glow on string
-      ctx.fillStyle=`rgba(255,160,50,${t*0.5})`;ctx.fillRect(bx+dir*12,sy-26,2,4);
-      ctx.globalAlpha=1;
-    }
+  // ── Nocked arrow ──
+  if(charging){
+    ctx.globalAlpha=0.6+chargeT*0.4;
+    ctx.fillStyle='#aa7722';ctx.fillRect(ox+4,sy-31,bowX-pull-ox-5,2);
+    ctx.fillStyle='#999';ctx.fillRect(bowX,sy-32,5,4);
+    ctx.fillStyle='#ccc';ctx.fillRect(bowX+1,sy-32,2,1);
+    ctx.fillStyle='#884422';ctx.fillRect(ox+4,sy-33,3,4);ctx.fillRect(ox+5,sy-33,1,5);
+    if(chargeT>0.5){ctx.fillStyle=`rgba(255,200,50,${(chargeT-0.5)*0.6})`;ctx.fillRect(bowX-pull-1,sy-32,3,4);}
+    ctx.globalAlpha=1;
   }
+
+  // ── Quiver ──
+  ctx.fillStyle='#3a2810';ctx.fillRect(ox-8,sy-38,5,16);
+  ctx.fillStyle='#2a1e0c';ctx.fillRect(ox-8,sy-38,5,3);
+  ctx.fillStyle='#aa8833';ctx.fillRect(ox-7,sy-42,1,6);ctx.fillRect(ox-5,sy-43,1,7);ctx.fillRect(ox-3,sy-41,1,5);
+  ctx.fillStyle='#888';ctx.fillRect(ox-7,sy-43,1,2);ctx.fillRect(ox-5,sy-44,1,2);ctx.fillRect(ox-3,sy-42,1,2);
+
+  ctx.restore();
 }
 
 function drawArrows(){
