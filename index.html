@@ -92,25 +92,25 @@ const SAVE_KEY='castle_climber_save_v2';
 
 // ── Upgrades ─────────────────────────────────────────────────────────────────
 const UPGRADES=[
-  {id:'power',    name:'TREBUCHET ARM',    desc:'Mightier launch force',                    icon:'⚔', base:15,  inc:0.9,   baseCost:60,  costMult:1.55},
-  {id:'preview',  name:'WIZARD SIGHT',     desc:'Longer trajectory preview arc',            icon:'🔮',base:6,   inc:3,     baseCost:40,  costMult:1.4},
-  {id:'rebounds', name:'SEER STONE',       desc:'Preview bounce off walls & platforms',     icon:'🪬',base:0,   inc:1,     baseCost:70,  costMult:1.6},
-  {id:'friction', name:'IRON SABATONS',    desc:'Better grip upon the stonework',           icon:'🛡', base:0.82,inc:-0.04, baseCost:50,  costMult:1.5},
-  {id:'gravity',  name:'FEATHERFALL RUNE', desc:'Enchantment lightens thy burden',          icon:'✨',base:0.42,inc:-0.02, baseCost:80,  costMult:1.6},
-  {id:'bounce',   name:'RUNED GAUNTLETS',  desc:'Rebound harder off castle walls',          icon:'💎',base:0.6, inc:0.08,  baseCost:40,  costMult:1.4},
-  {id:'coinmag',  name:'GILDED AURA',      desc:'Gold is drawn to thee from afar',          icon:'⚜', base:14,  inc:6,     baseCost:30,  costMult:1.35},
-  {id:'coinrate', name:'FORTUNE BLESSING', desc:'More gold glimmers in the castle',         icon:'🪙',base:0.18,inc:0.05,  baseCost:50,  costMult:1.45},
-  {id:'coyote',   name:"SQUIRE'S GRACE",   desc:'Extra moments to leap from ledges',        icon:'🐾',base:0,   inc:4,     baseCost:60,  costMult:1.5},
-  {id:'airbrake', name:'CAPE OF CONTROL',  desc:'Thy cloak steadies thine arc',             icon:'🧣',base:1.0, inc:-0.03, baseCost:40,  costMult:1.4},
-  {id:'coinval',  name:'ROYAL TITHE',      desc:"Each coin bears the king's bounty",        icon:'👑',base:1,   inc:1,     baseCost:100, costMult:1.7},
-  {id:'maxhp',    name:'VITALITY OATH',    desc:'Gain an extra heart of health',            icon:'❤️',base:3,   inc:1,     baseCost:80,  costMult:1.8},
-  {id:'fallres',  name:'IRONFLESH WARD',   desc:'Reduces fall damage taken',                icon:'🪨',base:0,   inc:0.15,  baseCost:55,  costMult:1.5},
-  {id:'airjumps', name:'WINGED BOOTS',     desc:'Extra mid-air launches per flight',        icon:'🦅',base:0,   inc:1,     baseCost:120, costMult:1.9},
+  {id:'power',    name:'TREBUCHET ARM',    desc:'Mightier launch force',                 icon:'⚔', base:15,  inc:0.9,   baseCost:60,  costMult:1.55},
+  {id:'preview',  name:'WIZARD SIGHT',     desc:'Longer trajectory preview arc',         icon:'🔮',base:4,   inc:3,     baseCost:40,  costMult:1.4},
+  {id:'rebounds', name:'SEER STONE',       desc:'Preview bounce off walls & platforms',  icon:'🪬',base:0,   inc:1,     baseCost:70,  costMult:1.6},
+  {id:'friction', name:'IRON SABATONS',    desc:'Better grip upon the stonework',        icon:'🛡', base:0.82,inc:-0.04, baseCost:50,  costMult:1.5},
+  {id:'gravity',  name:'FEATHERFALL RUNE', desc:'Enchantment lightens thy burden',       icon:'✨',base:0.42,inc:-0.02, baseCost:80,  costMult:1.6},
+  {id:'bounce',   name:'RUNED GAUNTLETS',  desc:'Rebound harder off castle walls',       icon:'💎',base:0.6, inc:0.08,  baseCost:40,  costMult:1.4},
+  {id:'coinmag',  name:'GILDED AURA',      desc:'Gold is drawn to thee from afar',       icon:'⚜', base:14,  inc:6,     baseCost:30,  costMult:1.35},
+  {id:'coinrate', name:'FORTUNE BLESSING', desc:'More gold glimmers in the castle',      icon:'🪙',base:0.18,inc:0.05,  baseCost:50,  costMult:1.45},
+  {id:'coyote',   name:"SQUIRE'S GRACE",   desc:'Extra moments to leap from ledges',     icon:'🐾',base:0,   inc:4,     baseCost:60,  costMult:1.5},
+  {id:'airbrake', name:'CAPE OF CONTROL',  desc:'Thy cloak steadies thine arc',          icon:'🧣',base:1.0, inc:-0.03, baseCost:40,  costMult:1.4},
+  {id:'coinval',  name:'ROYAL TITHE',      desc:"Each coin bears the king's bounty",     icon:'👑',base:1,   inc:1,     baseCost:100, costMult:1.7},
+  {id:'maxhp',    name:'VITALITY OATH',    desc:'Gain an extra heart of health',         icon:'❤️',base:3,   inc:1,     baseCost:80,  costMult:1.8},
+  {id:'fallres',  name:'IRONFLESH WARD',   desc:'Reduces fall damage taken',             icon:'🪨',base:0,   inc:0.15,  baseCost:55,  costMult:1.5},
+  {id:'airjumps', name:'WINGED BOOTS',     desc:'Extra mid-air launches per flight',     icon:'🦅',base:0,   inc:1,     baseCost:120, costMult:1.9},
 ];
 
 let upgLevels={};
 UPGRADES.forEach(u=>upgLevels[u.id]=0);
-let totalCoins=0, best=0;
+let totalCoins=0,best=0;
 
 function upgVal(id){const u=UPGRADES.find(x=>x.id===id);return u.base+upgLevels[id]*u.inc;}
 function upgCost(id){const u=UPGRADES.find(x=>x.id===id);return Math.ceil(u.baseCost*Math.pow(u.costMult,upgLevels[id]));}
@@ -138,11 +138,15 @@ function confirmWipe(){if(confirm('Wipe all progress? This cannot be undone.')){
 // ── State ─────────────────────────────────────────────────────────────────────
 let S,drag=null,floats=[],paused=false,saveTimer=0;
 
+// Deterministic hash for a world-Y band — used for consistent brick shading
+// and to decide whether a platform row gets a crack, without re-rolling on cull/regen.
 function hashY(y){let h=Math.sin(y*127.1+311.7)*43758.5453;return h-Math.floor(h);}
+// Hash that takes two inputs (for per-column, per-row decisions)
+function hash2(a,b){let h=Math.sin(a*127.1+b*311.7+92.3)*43758.5453;return h-Math.floor(h);}
 
 function mkS(savedPos){
   const hp=maxHP();
-  const sx=savedPos?savedPos.x:W/2, sy=savedPos?savedPos.y:0;
+  const sx=savedPos?savedPos.x:W/2,sy=savedPos?savedPos.y:0;
   const shp=savedPos?Math.min(savedPos.hp,hp):hp;
   const s={
     pl:{x:sx,y:sy,vx:0,vy:0,w:18,h:24,onG:false,coyote:0,
@@ -150,50 +154,108 @@ function mkS(savedPos){
         airJumpsLeft:maxAirJumps()},
     cam:sy-H*.38,
     plats:[],coins:[],
+    // Track which platform world-Y bands have already been assigned coins
+    // so re-generation after culling doesn't re-roll them.
+    coinSeeds:{},
     score:Math.floor(-sy/10),session_coins:0,
     alive:true,tick:0,
-    wallFlashL:0,wallFlashR:0,
     bats:[],
   };
-  s.plats.push({x:sx-55,y:sy+55,w:110,h:14,icy:false,torch:false});
+  s.plats.push({x:sx-55,y:sy+55,w:110,h:14,icy:false,torch:false,id:0});
+  s.coinSeeds[0]=0; // starting platform: no coin
   for(let i=0;i<8;i++) s.bats.push(mkBat(sy+(Math.random()-.5)*H*3));
   gen(s);
   return s;
 }
 
 function mkBat(wy){
-  return{
-    x:WALL+10+Math.random()*(W-WALL*2-20),
-    wy, vx:(Math.random()-.5)*1.0,
-    flap:Math.random()*Math.PI*2,
-    state:'idle',
-    agroTimer:0, retreatTimer:0,
-    tx:0,ty:0, dvx:0,dvy:0,
-    hurtTimer:0,
-  };
+  return{x:WALL+10+Math.random()*(W-WALL*2-20),wy,vx:(Math.random()-.5)*1.0,
+    flap:Math.random()*Math.PI*2,state:'idle',agroTimer:0,retreatTimer:0,
+    tx:0,ty:0,dvx:0,dvy:0,hurtTimer:0};
+}
+
+// Each platform gets a stable integer ID derived from its world-Y position.
+// This ID is used to seed coin placement so that re-generating a culled platform
+// does NOT re-roll a new coin — it reuses the same deterministic result.
+function platId(wy){
+  // Round to nearest 10 to absorb float drift, then hash to int
+  return Math.round(wy/10);
 }
 
 function gen(s){
-  const top=s.cam-H*.4,bot=s.cam+H*1.4;
+  // Use SYMMETRIC cull margins so up and down are treated identically.
+  // Generation range: 1H above cam to 1.5H below cam.
+  const top=s.cam-H;
+  const bot=s.cam+H*1.5;
+
   let mn=Infinity,mx=-Infinity;
   for(const p of s.plats){if(p.y<mn)mn=p.y;if(p.y>mx)mx=p.y;}
   if(!s.plats.length){mn=s.pl.y;mx=s.pl.y;}
-  let y=mx;while(y<bot+H*.6){y+=65+Math.random()*85;addP(s,y);}
-  y=mn;while(y>top-H*.6){y-=65+Math.random()*85;addP(s,y);}
+
+  // Generate downward
+  let y=mx;
+  while(y<bot+H*0.5){
+    y+=65+Math.random()*85;
+    addP(s,y);
+  }
+  // Generate upward
+  y=mn;
+  while(y>top-H*0.5){
+    y-=65+Math.random()*85;
+    addP(s,y);
+  }
   while(s.bats.length<8) s.bats.push(mkBat(s.cam+(Math.random()-.5)*H*2));
 }
+
 function addP(s,wy){
-  const avail=W-WALL*2,w=52+Math.random()*84,x=WALL+6+Math.random()*(avail-w-12);
-  const icy=Math.random()<0.18,torch=!icy&&Math.random()<0.3;
-  s.plats.push({x,y:wy,w,h:14,icy,torch});
-  const rate=Math.min(upgVal('coinrate'),0.75);
-  const count=Math.random()<rate?(Math.random()<0.15?2:1):0;
-  for(let i=0;i<count;i++){
-    s.coins.push({x:x+10+Math.random()*(w-20),y:wy-20-Math.random()*28,r:6,collected:false,bob:Math.random()*Math.PI*2});
+  // Don't add duplicate platforms at same world band
+  const id=platId(wy);
+  if(s.plats.some(p=>p.id===id)) return;
+
+  const avail=W-WALL*2;
+  // Use deterministic layout per id so re-generated platforms look the same
+  const rng1=hash2(id,1), rng2=hash2(id,2), rng3=hash2(id,3), rng4=hash2(id,4);
+  const w=52+rng1*84;
+  const x=WALL+6+rng2*(avail-w-12);
+  const icy=rng3<0.18;
+  const torch=!icy&&rng4<0.3;
+  s.plats.push({x,y:wy,w,h:14,icy,torch,id});
+
+  // Coin placement: only roll if we haven't seen this platform id before
+  if(!(id in s.coinSeeds)){
+    const rate=Math.min(upgVal('coinrate'),0.75);
+    const cr=hash2(id,5);
+    const cr2=hash2(id,6);
+    const count=cr<rate?(cr2<0.15?2:1):0;
+    s.coinSeeds[id]=count;
+    for(let i=0;i<count;i++){
+      const cx=hash2(id,7+i);
+      const cy=hash2(id,9+i);
+      s.coins.push({x:x+10+cx*(w-20),y:wy-20-cy*28,r:6,collected:false,bob:hash2(id,11+i)*Math.PI*2,id:id*10+i});
+    }
+  } else {
+    // Re-spawn coins for this platform only if not collected
+    const count=s.coinSeeds[id];
+    for(let i=0;i<count;i++){
+      const cid=id*10+i;
+      if(!s.coins.some(c=>c.id===cid)){
+        // Check if it was ever collected — we track via coinSeeds negative flag
+        if(s.coinSeeds[id]>=0){
+          // Not collected; re-add (was culled off screen)
+          const cx=hash2(id,7+i);
+          const cy=hash2(id,9+i);
+          s.coins.push({x:x+10+cx*(w-20),y:wy-20-cy*28,r:6,collected:false,bob:hash2(id,11+i)*Math.PI*2,id:cid});
+        }
+      }
+    }
   }
 }
+
 function cull(s){
-  const t=s.cam-H*.5,b=s.cam+H*1.5;
+  // SYMMETRIC margins: equal distance above and below camera
+  const margin=H*0.75;
+  const t=s.cam-margin;
+  const b=s.cam+H+margin;
   s.plats=s.plats.filter(p=>p.y>t&&p.y<b);
   s.coins=s.coins.filter(c=>!c.collected&&c.y>t&&c.y<b);
   s.bats=s.bats.filter(bt=>bt.state!=='idle'||(bt.wy>t-H&&bt.wy<b+H));
@@ -201,75 +263,50 @@ function cull(s){
 
 function addFloat(x,sy,text,color){floats.push({x,y:sy,vy:-1.4,life:55,text,color:color||'#ffdd00'});}
 
-const FALL_THRESH=10,FALL_SEVERE=16;
+// Fall damage thresholds — bumped up as requested
+const FALL_THRESH=16;   // was 10
+const FALL_SEVERE=25;   // was 16
 
 // ── Bats ──────────────────────────────────────────────────────────────────────
-// Agro rate significantly reduced: 4% chance every ~4 seconds (240 ticks)
-const BAT_AGRO_RATE   = 0.04;
-const BAT_AGRO_PERIOD = 240;  // ticks between agro rolls
-const BAT_DIVE_SPEED  = 5;    // was 7, now slower
-const BAT_IDLE_SPEED  = 0.8;  // gentle drift speed cap
+const BAT_AGRO_RATE=0.04,BAT_AGRO_PERIOD=240,BAT_DIVE_SPEED=5,BAT_IDLE_SPEED=0.8;
 
 function updateBats(s){
   const pl=s.pl;
   for(const bt of s.bats){
     bt.flap+=0.14;
     if(bt.hurtTimer>0) bt.hurtTimer--;
-
     if(bt.state==='idle'){
       bt.x+=bt.vx;
       bt.wy+=Math.sin(bt.flap*0.25)*0.3;
       if(bt.x<WALL+8||bt.x>W-WALL-8) bt.vx*=-1;
-      // Clamp idle speed
       bt.vx=Math.max(-BAT_IDLE_SPEED,Math.min(BAT_IDLE_SPEED,bt.vx));
-
-      const batSY=bt.wy-s.cam;
-      const onScreen=batSY>-50&&batSY<H+50;
-      // Low frequency agro check
-      if(onScreen&&!paused&&s.tick%BAT_AGRO_PERIOD===0&&Math.random()<BAT_AGRO_RATE){
-        bt.state='agro';
-        bt.agroTimer=90+Math.random()*60; // 1.5–2.5 sec warning
+      const bsy=bt.wy-s.cam;
+      if(bsy>-50&&bsy<H+50&&!paused&&s.tick%BAT_AGRO_PERIOD===0&&Math.random()<BAT_AGRO_RATE){
+        bt.state='agro';bt.agroTimer=90+Math.random()*60;
       }
-    }
-    else if(bt.state==='agro'){
-      // Faster flap but still gentle drift — no rush toward player yet
-      bt.flap+=0.06;
-      bt.x+=bt.vx*1.2;
-      // Very slow creep toward player Y to telegraph intent
+    } else if(bt.state==='agro'){
+      bt.flap+=0.06;bt.x+=bt.vx*1.2;
       bt.wy+=(pl.y-bt.wy)*0.008;
       if(bt.x<WALL+8||bt.x>W-WALL-8) bt.vx*=-1;
-      bt.agroTimer--;
-      if(bt.agroTimer<=0){
+      if(--bt.agroTimer<=0){
         bt.state='diving';
-        bt.tx=pl.x; bt.ty=pl.y;
-        const dx=pl.x-bt.x,dy=pl.y-bt.wy,dist=Math.sqrt(dx*dx+dy*dy)||1;
-        bt.dvx=dx/dist*BAT_DIVE_SPEED;
-        bt.dvy=dy/dist*BAT_DIVE_SPEED;
+        const dx=pl.x-bt.x,dy=pl.y-bt.wy,d=Math.sqrt(dx*dx+dy*dy)||1;
+        bt.dvx=dx/d*BAT_DIVE_SPEED;bt.dvy=dy/d*BAT_DIVE_SPEED;
       }
-    }
-    else if(bt.state==='diving'){
-      bt.x+=bt.dvx; bt.wy+=bt.dvy;
+    } else if(bt.state==='diving'){
+      bt.x+=bt.dvx;bt.wy+=bt.dvy;
       const dx=pl.x-bt.x,dy=pl.y-bt.wy;
       if(Math.sqrt(dx*dx+dy*dy)<20){
         takeDamage(s,1,'🦇 HIT!');
-        bt.state='retreating'; bt.retreatTimer=100;
-        bt.dvx*=-0.7; bt.dvy=-3;
-        bt.hurtTimer=20;
+        bt.state='retreating';bt.retreatTimer=100;bt.dvx*=-0.7;bt.dvy=-3;bt.hurtTimer=20;
       }
       const bsy=bt.wy-s.cam;
       if(bsy<-H||bsy>H*2||bt.x<WALL||bt.x>W-WALL){
-        bt.state='retreating'; bt.retreatTimer=80;
-        bt.dvx*=-0.5; bt.dvy=-2;
+        bt.state='retreating';bt.retreatTimer=80;bt.dvx*=-0.5;bt.dvy=-2;
       }
-    }
-    else if(bt.state==='retreating'){
-      bt.x+=bt.dvx*0.88; bt.wy+=bt.dvy;
-      bt.dvx*=0.9; bt.dvy*=0.88;
-      bt.retreatTimer--;
-      if(bt.retreatTimer<=0){
-        bt.state='idle';
-        bt.vx=(Math.random()-.5)*BAT_IDLE_SPEED*2;
-      }
+    } else if(bt.state==='retreating'){
+      bt.x+=bt.dvx*0.88;bt.wy+=bt.dvy;bt.dvx*=0.9;bt.dvy*=0.88;
+      if(--bt.retreatTimer<=0){bt.state='idle';bt.vx=(Math.random()-.5)*BAT_IDLE_SPEED*2;}
     }
   }
 }
@@ -277,22 +314,20 @@ function updateBats(s){
 // ── Update ────────────────────────────────────────────────────────────────────
 function update(s){
   s.tick++;
-  const pl=s.pl;
-  const prevY=pl.y,prevX=pl.x;
+  const pl=s.pl,prevY=pl.y,prevX=pl.x;
   const grav=upgVal('gravity'),ab=upgVal('airbrake');
 
   if(pl.vy>0) pl.fallVy=Math.max(pl.fallVy,pl.vy);
   pl.vy+=grav;
   if(!pl.onG) pl.vx*=ab;
-  pl.x+=pl.vx; pl.y+=pl.vy;
+  pl.x+=pl.vx;pl.y+=pl.vy;
   if(pl.hurtTimer>0) pl.hurtTimer--;
   if(pl.damageFlash>0) pl.damageFlash--;
 
+  // Walls — no flash, just physics
   const bounce=upgVal('bounce');
-  if(pl.x-pl.w/2<WALL){pl.x=WALL+pl.w/2;pl.vx=Math.abs(pl.vx)*bounce;s.wallFlashL=10;}
-  if(pl.x+pl.w/2>W-WALL){pl.x=W-WALL-pl.w/2;pl.vx=-Math.abs(pl.vx)*bounce;s.wallFlashR=10;}
-  if(s.wallFlashL>0)s.wallFlashL--;
-  if(s.wallFlashR>0)s.wallFlashR--;
+  if(pl.x-pl.w/2<WALL){pl.x=WALL+pl.w/2;pl.vx=Math.abs(pl.vx)*bounce;}
+  if(pl.x+pl.w/2>W-WALL){pl.x=W-WALL-pl.w/2;pl.vx=-Math.abs(pl.vx)*bounce;}
 
   if(pl.onG){pl.coyote=upgVal('coyote')|0;pl.airJumpsLeft=maxAirJumps();}
   else if(pl.coyote>0) pl.coyote--;
@@ -313,8 +348,7 @@ function update(s){
         if(dmg>0&&Math.random()>resist-Math.floor(resist)) takeDamage(s,dmg,'FALL!');
       }
       pl.fallVy=0;pl.y=p.y-pl.h/2;pl.vy=0;pl.vx*=lf;pl.onG=true;
-    }
-    else if(fromBot){pl.fallVy=0;pl.y=pB+pl.h/2;pl.vy=Math.abs(pl.vy)*0.3;}
+    } else if(fromBot){pl.fallVy=0;pl.y=pB+pl.h/2;pl.vy=Math.abs(pl.vy)*0.3;}
     else if(fromL){pl.x=p.x-pl.w/2;pl.vx=-Math.abs(pl.vx)*0.3;}
     else if(fromR){pl.x=pR+pl.w/2;pl.vx=Math.abs(pl.vx)*0.3;}
     else{
@@ -334,33 +368,36 @@ function update(s){
     coin.bob+=0.05;
     const dx=pl.x-coin.x,dy=pl.y-coin.y,dist=Math.sqrt(dx*dx+dy*dy);
     if(dist<mag*2.5&&dist>mag){coin.x+=dx/dist*3;coin.y+=dy/dist*3;}
-    if(dist<mag){coin.collected=true;s.session_coins+=val;totalCoins+=val;addFloat(coin.x,coin.y-s.cam,val>1?'+'+val+' ⚜':'+⚜','#ffcc44');}
+    if(dist<mag){
+      coin.collected=true;
+      // Mark collected in seeds so it won't respawn
+      const sid=coin.id/10|0;
+      s.coinSeeds[sid]=-Math.abs(s.coinSeeds[sid]||0)-1;
+      s.session_coins+=val;totalCoins+=val;
+      addFloat(coin.x,coin.y-s.cam,val>1?'+'+val+' ⚜':'+⚜','#ffcc44');
+    }
   }
 
   updateBats(s);
-
   s.cam+=(pl.y-H*.4-s.cam)*.07;
   s.score=Math.floor(-pl.y/10);
   if(s.score>best) best=s.score;
   floats=floats.filter(f=>{f.y+=f.vy;f.life--;return f.life>0;});
   gen(s);cull(s);
 
-  saveTimer++;
-  if(saveTimer>300){saveTimer=0;saveGame(s);}
+  if(++saveTimer>300){saveTimer=0;saveGame(s);}
 
   document.getElementById('score').textContent='FLOOR: '+s.score;
   document.getElementById('best').textContent='BEST: '+best;
   document.getElementById('coindisp').textContent='⚜ '+totalCoins;
   updateHeartsUI(pl);
-
   if(pl.y-s.cam>H+220){pl.hp=0;killPlayer(s);}
 }
 
 function takeDamage(s,dmg,label){
   const pl=s.pl;
   if(pl.hurtTimer>0) return;
-  pl.hp=Math.max(0,pl.hp-dmg);
-  pl.hurtTimer=60;pl.damageFlash=20;
+  pl.hp=Math.max(0,pl.hp-dmg);pl.hurtTimer=60;pl.damageFlash=20;
   addFloat(pl.x,pl.y-s.cam-20,label||'-'+dmg+'❤️','#ff4444');
   updateHeartsUI(pl);
   if(pl.hp<=0) killPlayer(s);
@@ -373,10 +410,7 @@ function updateHeartsUI(pl){
 }
 
 // ── Input ─────────────────────────────────────────────────────────────────────
-function xy(e){
-  const r=C.getBoundingClientRect(),t=e.touches?(e.touches[0]||e.changedTouches[0]):e;
-  return{x:(t.clientX-r.left)/SC,y:(t.clientY-r.top)/SC};
-}
+function xy(e){const r=C.getBoundingClientRect(),t=e.touches?(e.touches[0]||e.changedTouches[0]):e;return{x:(t.clientX-r.left)/SC,y:(t.clientY-r.top)/SC};}
 C.addEventListener('touchstart',e=>{e.preventDefault();if(!paused)dn(xy(e));},{passive:false});
 C.addEventListener('touchmove',e=>{e.preventDefault();if(!paused)mv(xy(e));},{passive:false});
 C.addEventListener('touchend',e=>{e.preventDefault();if(!paused)up();},{passive:false});
@@ -384,108 +418,87 @@ C.addEventListener('mousedown',e=>{if(!paused)dn(xy(e));});
 window.addEventListener('mousemove',e=>{if(!paused)mv(xy(e));});
 window.addEventListener('mouseup',()=>{if(!paused)up();});
 
-function canLaunch(){
-  const pl=S.pl;
-  return pl.onG||pl.coyote>0||pl.airJumpsLeft>0;
-}
-function dn(p){
-  if(!S.alive) return;
-  drag={sx:p.x,sy:p.y,cx:p.x,cy:p.y};
-  document.getElementById('hint').style.display='none';
-}
-function mv(p){if(drag) drag={...drag,cx:p.x,cy:p.y};}
+function canLaunch(){const pl=S.pl;return pl.onG||pl.coyote>0||pl.airJumpsLeft>0;}
+function dn(p){if(!S.alive)return;drag={sx:p.x,sy:p.y,cx:p.x,cy:p.y};document.getElementById('hint').style.display='none';}
+function mv(p){if(drag)drag={...drag,cx:p.x,cy:p.y};}
 function up(){
   if(!drag||!S.alive){drag=null;return;}
-  const dx=drag.cx-drag.sx,dy=drag.cy-drag.sy;
-  const dist=Math.sqrt(dx*dx+dy*dy);
+  const dx=drag.cx-drag.sx,dy=drag.cy-drag.sy,dist=Math.sqrt(dx*dx+dy*dy);
   if(dist<8){drag=null;return;}
   if(!canLaunch()){drag=null;return;}
   const d=Math.min(dist,130),a=Math.atan2(dy,dx),pw=d/130;
-  const power=upgVal('power');
-  S.pl.vx=-Math.cos(a)*pw*power;
-  S.pl.vy=-Math.sin(a)*pw*power;
+  S.pl.vx=-Math.cos(a)*pw*upgVal('power');
+  S.pl.vy=-Math.sin(a)*pw*upgVal('power');
   if(!S.pl.onG&&S.pl.coyote<=0) S.pl.airJumpsLeft=Math.max(0,S.pl.airJumpsLeft-1);
-  S.pl.onG=false;
-  drag=null;
+  S.pl.onG=false;drag=null;
 }
 
 // ── Trajectory simulation ─────────────────────────────────────────────────────
-// Bounce colors per segment: gold → cyan → violet → green → orange
-const BOUNCE_COLORS=[
-  [255,200,80],   // 0: initial arc — gold
-  [80, 200,255],  // 1: first bounce — cyan
-  [180,80, 255],  // 2: second bounce — violet
-  [80, 255,120],  // 3: third bounce — green
-  [255,140,40],   // 4: fourth bounce — orange
-];
+const BOUNCE_COLORS=[[255,200,80],[80,200,255],[180,80,255],[80,255,120],[255,140,40]];
 
-function simTrajectory(startX,startY,vx0,vy0,maxSteps,maxBounces){
-  // Returns array of segments: [{dots:[{x,y}], bounceIdx}]
-  const grav=upgVal('gravity'), ab=upgVal('airbrake'), bounceCoeff=upgVal('bounce');
-  const platFriction=upgVal('friction');
-  let tx=startX,ty=startY,tvx=vx0,tvy=vy0;
-  let bounceCount=0;
-  let segments=[{dots:[],bounceIdx:0}];
-  let stepBudget=maxSteps;
-
-  while(stepBudget>0&&bounceCount<=maxBounces){
-    tvy+=grav; tvx*=ab;
-    tx+=tvx; ty+=tvy;
-    stepBudget--;
-
-    let bounced=false;
-
-    // Wall bounces
-    if(tx<=WALL+1){
-      tx=WALL+1; tvx=Math.abs(tvx)*bounceCoeff;
-      bounceCount++;bounced=true;
-    }else if(tx>=W-WALL-1){
-      tx=W-WALL-1; tvx=-Math.abs(tvx)*bounceCoeff;
-      bounceCount++;bounced=true;
-    }
-
-    // Platform bounces (top surface only for preview)
-    if(!bounced&&tvy>0){
+function simTrajectory(sx,sy,vx0,vy0,maxSteps,maxBounces){
+  const grav=upgVal('gravity'),ab=upgVal('airbrake'),bc=upgVal('bounce'),pf=upgVal('friction');
+  let tx=sx,ty=sy,tvx=vx0,tvy=vy0,bounces=0;
+  const segs=[{dots:[],bi:0}];
+  for(let i=0;i<maxSteps&&bounces<=maxBounces;i++){
+    tvy+=grav;tvx*=ab;tx+=tvx;ty+=tvy;
+    let hit=false;
+    if(tx<=WALL+1){tx=WALL+1;tvx=Math.abs(tvx)*bc;bounces++;hit=true;}
+    else if(tx>=W-WALL-1){tx=W-WALL-1;tvx=-Math.abs(tvx)*bc;bounces++;hit=true;}
+    if(!hit&&tvy>0){
       for(const p of S.plats){
         if(tx+9>p.x&&tx-9<p.x+p.w&&ty>=p.y-2&&ty<=p.y+4){
-          ty=p.y-1; tvy=-Math.abs(tvy)*0.5; tvx*=platFriction;
-          bounceCount++;bounced=true;break;
+          ty=p.y-1;tvy=-Math.abs(tvy)*0.5;tvx*=pf;bounces++;hit=true;break;
         }
       }
     }
-
-    // Push dot to current segment
-    segments[segments.length-1].dots.push({x:tx,y:ty});
-
-    // If we bounced and haven't exceeded max, start new segment
-    if(bounced&&bounceCount<=maxBounces){
-      if(bounceCount>maxBounces) break;
-      segments.push({dots:[{x:tx,y:ty}],bounceIdx:bounceCount});
-    }
+    segs[segs.length-1].dots.push({x:tx,y:ty});
+    if(hit&&bounces<=maxBounces) segs.push({dots:[{x:tx,y:ty}],bi:bounces});
   }
-  return segments;
+  return segs;
 }
 
 // ── Draw ──────────────────────────────────────────────────────────────────────
+
 function drawCastleWall(){
-  const bH=16,bW=32,camOff=(S.cam%bH+bH)%bH;
-  for(let row=0;row<=Math.ceil(H/bH);row++){
-    const wy=row*bH-camOff;
-    const wRow=Math.floor((S.cam+wy)/bH);
-    const off=(wRow%2===0)?0:bW/2;
-    const shade=wRow%3===0?'#2a2520':wRow%3===1?'#252018':'#221e15';
+  // FIX: draw each brick using fully integer-aligned coordinates derived from
+  // the world-row index, avoiding sub-pixel drift that causes shimmer/overlap.
+  const bH=16,bW=32;
+  // Which world row sits at the very top of the screen
+  const topWorldRow=Math.floor(S.cam/bH);
+
+  for(let row=topWorldRow-1;row<=topWorldRow+Math.ceil(H/bH)+1;row++){
+    const off=(row%2===0)?0:bW/2;
+    // Screen Y of this row's top edge — integer-snapped
+    const wy=Math.round((row*bH)-S.cam);
+
+    // Deterministic shade per row using hash (no random per frame)
+    const shade=row%3===0?'#2a2520':row%3===1?'#252018':'#221e15';
+
     for(let col=-1;col<=Math.ceil(W/bW)+1;col++){
-      const bx=col*bW+off;
-      ctx.fillStyle=shade;ctx.fillRect(bx|0,wy|0,bW-2,bH-2);
-      ctx.fillStyle='#181410';
-      ctx.fillRect(bx|0,(wy+bH-2)|0,bW,2);
-      ctx.fillRect((bx+bW-2)|0,wy|0,2,bH);
-      if(hashY(wRow*100+col)<0.12){ctx.fillStyle='#111';ctx.fillRect((bx+8)|0,(wy+4)|0,1,6);}
+      const bx=Math.round(col*bW+off);
+      // Only draw if on screen
+      if(bx+bW<0||bx>W||wy+bH<0||wy>H) continue;
+
+      ctx.fillStyle=shade;
+      ctx.fillRect(bx,wy,bW-2,bH-2);
+
+      // Mortar (gaps between bricks)
+      ctx.fillStyle='#141210';
+      ctx.fillRect(bx,wy+bH-2,bW,2);   // horizontal mortar
+      ctx.fillRect(bx+bW-2,wy,2,bH);   // vertical mortar
+
+      // Deterministic crack
+      if(hash2(row,col)<0.12){
+        ctx.fillStyle='#0e0c0a';
+        ctx.fillRect(bx+8,wy+4,1,6);
+      }
     }
   }
 }
+
 function drawTorch(x,y){
-  const t=S.tick,fl=Math.sin(t*0.3)*2+Math.sin(t*0.7)*1.5;
+  const fl=Math.sin(S.tick*0.3)*2+Math.sin(S.tick*0.7)*1.5;
   ctx.fillStyle='#555';ctx.fillRect((x-3)|0,(y-2)|0,6,8);
   ctx.fillStyle='#888';ctx.fillRect((x-2)|0,(y-1)|0,4,6);
   ctx.fillStyle='#886633';ctx.fillRect((x-1)|0,(y+4)|0,2,10);
@@ -496,13 +509,21 @@ function drawTorch(x,y){
   ctx.fillStyle='rgba(255,180,0,0.9)';ctx.beginPath();ctx.ellipse(x,y-1+fl*0.2,2.5,5,0,0,Math.PI*2);ctx.fill();
   ctx.fillStyle='rgba(255,255,180,0.8)';ctx.beginPath();ctx.ellipse(x,y+fl*0.1,1,3,0,0,Math.PI*2);ctx.fill();
 }
+
 function drawWalls(){
-  const lf=S.wallFlashL>0,rf=S.wallFlashR>0;
-  for(let y=0;y<H;y+=12){ctx.fillStyle=lf?'#887733':(y%24<12?'#3a3530':'#332f2a');ctx.fillRect(0,y,WALL,12);}
-  ctx.fillStyle=lf?'#ffdd66':'#555';ctx.fillRect(WALL-2,0,2,H);
-  for(let y=0;y<H;y+=12){ctx.fillStyle=rf?'#887733':(y%24<12?'#3a3530':'#332f2a');ctx.fillRect(W-WALL,y,WALL,12);}
-  ctx.fillStyle=rf?'#ffdd66':'#555';ctx.fillRect(W-WALL,0,2,H);
+  // No flash — static stone walls only
+  for(let y=0;y<H;y+=12){
+    ctx.fillStyle=y%24<12?'#3a3530':'#332f2a';
+    ctx.fillRect(0,y,WALL,12);
+  }
+  ctx.fillStyle='#555';ctx.fillRect(WALL-2,0,2,H);
+  for(let y=0;y<H;y+=12){
+    ctx.fillStyle=y%24<12?'#3a3530':'#332f2a';
+    ctx.fillRect(W-WALL,y,WALL,12);
+  }
+  ctx.fillStyle='#555';ctx.fillRect(W-WALL,0,2,H);
 }
+
 function drawPlatform(p){
   const sy=(p.y-S.cam)|0;
   if(p.icy){
@@ -513,7 +534,7 @@ function drawPlatform(p){
     for(let i=6;i<p.w-4;i+=14) ctx.fillRect((p.x+i)|0,sy+1,4,2);
     ctx.fillStyle='rgba(180,230,255,0.12)';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
     ctx.fillStyle='#334455';ctx.fillRect((p.x+2)|0,(sy+p.h)|0,p.w|0,4);
-  }else{
+  } else {
     ctx.fillStyle='#44403a';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
     ctx.fillStyle='#6a6258';ctx.fillRect(p.x|0,sy,p.w|0,4);
     ctx.fillStyle='#7a7268';ctx.fillRect(p.x|0,sy,p.w|0,2);
@@ -526,6 +547,7 @@ function drawPlatform(p){
     if(p.torch) drawTorch(p.x+p.w/2,sy-2);
   }
 }
+
 function drawGold(coin){
   if(coin.collected) return;
   const sy=(coin.y-S.cam+Math.sin(coin.bob)*3)|0;
@@ -537,8 +559,11 @@ function drawGold(coin){
   ctx.fillStyle='#ffe066';ctx.fillRect((coin.x-4)|0,(sy-5)|0,8,10);
   ctx.fillStyle='#fff8aa';ctx.fillRect((coin.x-3)|0,(sy-4)|0,3,3);
   ctx.fillStyle='#aa7700';
-  ctx.fillRect((coin.x-1)|0,(sy-3)|0,2,6);ctx.fillRect((coin.x-3)|0,(sy-1)|0,6,2);ctx.fillRect((coin.x-1)|0,(sy-5)|0,2,2);
+  ctx.fillRect((coin.x-1)|0,(sy-3)|0,2,6);
+  ctx.fillRect((coin.x-3)|0,(sy-1)|0,6,2);
+  ctx.fillRect((coin.x-1)|0,(sy-5)|0,2,2);
 }
+
 function drawKnight(){
   const pl=S.pl;
   const flash=pl.damageFlash>0&&Math.floor(pl.damageFlash/4)%2===0;
@@ -573,7 +598,6 @@ function drawKnight(){
   ctx.fillStyle='#eee';ctx.fillRect(0,-14,1,10);
   ctx.restore();
   if(flash) ctx.globalAlpha=1;
-
   const aj=pl.airJumpsLeft;
   if(aj>0&&!pl.onG){
     for(let i=0;i<aj;i++){
@@ -582,6 +606,7 @@ function drawKnight(){
     }
   }
 }
+
 function drawBat(bt){
   const sy=(bt.wy-S.cam)|0;
   if(sy<-30||sy>H+30) return;
@@ -589,115 +614,76 @@ function drawBat(bt){
   const flash=bt.hurtTimer>0&&Math.floor(bt.hurtTimer/3)%2===0;
   const wing=Math.sin(bt.flap)*(agro?10:6);
   if(flash) ctx.globalAlpha=0.4;
-
-  if(agro&&bt.state==='agro'){
-    // Subtle amber eye glow instead of full red ring — just a soft halo behind eyes
-    ctx.fillStyle='rgba(255,140,0,0.12)';
-    ctx.beginPath();ctx.arc(bt.x,sy,10,0,Math.PI*2);ctx.fill();
-  }
-  if(agro&&bt.state==='diving'){
-    // During dive: slightly brighter amber halo
-    ctx.fillStyle='rgba(255,100,0,0.18)';
-    ctx.beginPath();ctx.arc(bt.x,sy,12,0,Math.PI*2);ctx.fill();
-  }
-
-  const bc=agro?'#2a1414':'#221a2a';
-  ctx.fillStyle=bc;
+  if(agro&&bt.state==='agro'){ctx.fillStyle='rgba(255,140,0,0.12)';ctx.beginPath();ctx.arc(bt.x,sy,10,0,Math.PI*2);ctx.fill();}
+  if(agro&&bt.state==='diving'){ctx.fillStyle='rgba(255,100,0,0.18)';ctx.beginPath();ctx.arc(bt.x,sy,12,0,Math.PI*2);ctx.fill();}
+  ctx.fillStyle=agro?'#2a1414':'#221a2a';
   ctx.fillRect((bt.x-3)|0,(sy-2)|0,6,5);
   ctx.fillRect((bt.x-12)|0,(sy-2+wing)|0,9,4);
   ctx.fillRect((bt.x+3)|0,(sy-2+wing)|0,9,4);
   ctx.fillRect((bt.x-14)|0,(sy+1+wing)|0,3,2);
   ctx.fillRect((bt.x+11)|0,(sy+1+wing)|0,3,2);
-  // Eyes: idle = very dim red, agro = brighter amber, diving = orange-red
   ctx.fillStyle=bt.state==='diving'?'#ff6600':agro?'#cc6600':'#441111';
-  ctx.fillRect((bt.x-2)|0,(sy-1)|0,1,1);
-  ctx.fillRect((bt.x+1)|0,(sy-1)|0,1,1);
+  ctx.fillRect((bt.x-2)|0,(sy-1)|0,1,1);ctx.fillRect((bt.x+1)|0,(sy-1)|0,1,1);
   if(flash) ctx.globalAlpha=1;
 }
 
 function drawSling(){
   if(!drag) return;
-  const pl=S.pl;
-  const ps={x:pl.x,y:pl.y-S.cam};
-  const dx=drag.sx-drag.cx,dy=drag.sy-drag.cy;
-  const dist=Math.sqrt(dx*dx+dy*dy);
+  const pl=S.pl,ps={x:pl.x,y:pl.y-S.cam};
+  const dx=drag.sx-drag.cx,dy=drag.sy-drag.cy,dist=Math.sqrt(dx*dx+dy*dy);
   if(dist<4) return;
-
   const canFire=canLaunch();
   const pw=Math.min(dist,130)/130;
-  const angle=Math.atan2(dy,dx);
-  const power=upgVal('power');
-  const vx0=Math.cos(angle)*pw*power, vy0=Math.sin(angle)*pw*power;
+  const vx0=Math.cos(Math.atan2(dy,dx))*pw*upgVal('power');
+  const vy0=Math.sin(Math.atan2(dy,dx))*pw*upgVal('power');
 
-  // Drag indicator line (subtle)
-  ctx.save();
-  ctx.globalAlpha=canFire?0.35:0.18;
+  // Subtle drag line
+  ctx.save();ctx.globalAlpha=canFire?0.3:0.15;
   ctx.strokeStyle='#aa9955';ctx.lineWidth=1;ctx.setLineDash([2,5]);
   ctx.beginPath();ctx.moveTo(drag.sx,drag.sy);ctx.lineTo(drag.cx,drag.cy);ctx.stroke();
   ctx.setLineDash([]);ctx.restore();
 
-  // ── Trajectory arc with rebound segments ─────────────────────────────────
-  const baseSteps=Math.floor(upgVal('preview')*5); // base steps per segment
-  const numRebounds=maxRebounds();                  // 0 = no rebound preview
-  const totalSteps=baseSteps*(numRebounds+1);
-  const segments=simTrajectory(ps.x,ps.y,vx0,vy0,totalSteps,numRebounds);
+  // Arc preview
+  // base steps from preview upgrade: smaller base = shorter initial arc
+  const baseSteps=Math.floor(upgVal('preview')*4);
+  const numBounces=maxRebounds();
+  const segs=simTrajectory(ps.x,ps.y,vx0,vy0,baseSteps*(numBounces+1),numBounces);
 
   ctx.globalAlpha=canFire?1:0.3;
-  segments.forEach((seg,si)=>{
+  segs.forEach((seg,si)=>{
     const col=BOUNCE_COLORS[Math.min(si,BOUNCE_COLORS.length-1)];
-    const totalDots=seg.dots.length;
+    const n=seg.dots.length;
     seg.dots.forEach((d,di)=>{
-      const t=di/Math.max(totalDots-1,1);
-      // Dots shrink and fade toward end of each segment
+      const t=di/Math.max(n-1,1);
       const r=Math.max(0.8,3*(1-t*0.6));
       const alpha=(1-t*0.55)*(si===0?1:0.75);
       ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
-      // Convert world Y to screen Y
       ctx.beginPath();ctx.arc(d.x,d.y,r,0,Math.PI*2);ctx.fill();
     });
-
-    // Draw a small 'X' marker at the bounce point between segments
-    if(si<segments.length-1&&seg.dots.length>0){
+    if(si<segs.length-1&&seg.dots.length>0){
       const last=seg.dots[seg.dots.length-1];
-      const nextCol=BOUNCE_COLORS[Math.min(si+1,BOUNCE_COLORS.length-1)];
-      ctx.strokeStyle=`rgba(${nextCol[0]},${nextCol[1]},${nextCol[2]},0.9)`;
-      ctx.lineWidth=1.5;
+      const nc=BOUNCE_COLORS[Math.min(si+1,BOUNCE_COLORS.length-1)];
+      ctx.strokeStyle=`rgba(${nc[0]},${nc[1]},${nc[2]},0.9)`;ctx.lineWidth=1.5;
       ctx.beginPath();ctx.moveTo(last.x-4,last.y-4);ctx.lineTo(last.x+4,last.y+4);ctx.stroke();
       ctx.beginPath();ctx.moveTo(last.x+4,last.y-4);ctx.lineTo(last.x-4,last.y+4);ctx.stroke();
     }
   });
   ctx.globalAlpha=1;
 
-  // Power bar
   const bars=Math.ceil(pw*5);
-  for(let i=0;i<5;i++){
-    ctx.fillStyle=i<bars?(pw>.7?'#ff6633':'#ffcc44'):'rgba(255,255,255,.1)';
-    ctx.fillRect(W-WALL-16,H-32-i*8,10,6);
-  }
-  ctx.fillStyle='#886633';ctx.font='8px monospace';ctx.textAlign='right';
-  ctx.fillText('FORCE',W-WALL-2,H-10);ctx.textAlign='left';
-
-  if(!canFire){
-    ctx.fillStyle='rgba(255,80,80,0.8)';ctx.font='bold 9px monospace';ctx.textAlign='center';
-    ctx.fillText('NO JUMPS LEFT',W/2,H-12);ctx.textAlign='left';
-  }
-
+  for(let i=0;i<5;i++){ctx.fillStyle=i<bars?(pw>.7?'#ff6633':'#ffcc44'):'rgba(255,255,255,.1)';ctx.fillRect(W-WALL-16,H-32-i*8,10,6);}
+  ctx.fillStyle='#886633';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText('FORCE',W-WALL-2,H-10);ctx.textAlign='left';
+  if(!canFire){ctx.fillStyle='rgba(255,80,80,0.8)';ctx.font='bold 9px monospace';ctx.textAlign='center';ctx.fillText('NO JUMPS LEFT',W/2,H-12);ctx.textAlign='left';}
   const aj=pl.airJumpsLeft;
-  if(!pl.onG&&pl.coyote<=0&&maxAirJumps()>0){
-    ctx.fillStyle='rgba(100,200,255,0.6)';ctx.font='9px monospace';ctx.textAlign='center';
-    ctx.fillText('AIR: '+aj+'/'+maxAirJumps(),W/2,H-24);ctx.textAlign='left';
-  }
+  if(!pl.onG&&pl.coyote<=0&&maxAirJumps()>0){ctx.fillStyle='rgba(100,200,255,0.6)';ctx.font='9px monospace';ctx.textAlign='center';ctx.fillText('AIR: '+aj+'/'+maxAirJumps(),W/2,H-24);ctx.textAlign='left';}
 }
 
 function drawFloats(){
   fctx.clearRect(0,0,W,H);fctx.textAlign='center';
-  for(const f of floats){
-    fctx.globalAlpha=f.life/55;fctx.fillStyle=f.color;
-    fctx.font='bold 13px monospace';fctx.fillText(f.text,f.x,f.y);
-  }
+  for(const f of floats){fctx.globalAlpha=f.life/55;fctx.fillStyle=f.color;fctx.font='bold 13px monospace';fctx.fillText(f.text,f.x,f.y);}
   fctx.globalAlpha=1;fctx.textAlign='left';
 }
-function drawPauseOverlay(){ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,W,H);}
+
 function drawSky(){
   const t=Math.max(0,Math.min(1,S.score/500));
   ctx.fillStyle=`rgb(${8+t*4|0},${8+t*3|0},${22+t*10|0})`;ctx.fillRect(0,0,W,H);
@@ -713,18 +699,22 @@ function drawSky(){
     if(sy<0||sy>H) continue;
     const twink=0.4+0.6*Math.abs(Math.sin(S.tick*0.02+i));
     ctx.fillStyle=`rgba(255,245,200,${twink*0.9})`;
-    ctx.fillRect(sx|0,sy|0,hashY(i*7.1)<0.2?1.5:1,hashY(i*7.1)<0.2?1.5:1);
+    const sr=hashY(i*7.1)<0.2?1.5:1;
+    ctx.fillRect(sx|0,sy|0,sr,sr);
   }
 }
 
 function frame(){
   if(S.alive&&!paused) update(S);
-  drawSky();drawCastleWall();
+  drawSky();
+  drawCastleWall();
   for(const bt of S.bats) drawBat(bt);
   for(const p of S.plats) drawPlatform(p);
   for(const c of S.coins) drawGold(c);
-  drawKnight();drawWalls();drawSling();
-  if(paused) drawPauseOverlay();
+  drawKnight();
+  drawWalls();
+  drawSling();
+  if(paused){ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,W,H);}
   const vig=ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
   vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,0.45)');
   ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
@@ -748,15 +738,14 @@ function togglePause(){
     document.getElementById('pause-coins').textContent='⚜ '+totalCoins+' gold available';
     renderShop('pause');
     document.getElementById('pausemenu').style.display='block';
-  }else{
+  } else {
     btn.textContent='⏸';
     document.getElementById('pausemenu').style.display='none';
     drag=null;
   }
 }
 function dieAndShowGO(){
-  paused=false;
-  document.getElementById('pausemenu').style.display='none';
+  paused=false;document.getElementById('pausemenu').style.display='none';
   document.getElementById('pausebtn').textContent='⏸';
   S.alive=false;saveGame(null);showGO(S);
 }
@@ -764,8 +753,7 @@ function showGO(s){
   document.getElementById('pausebtn').style.display='none';
   document.getElementById('go-title').textContent=s.pl.hp<=0?'💀 FALLEN 💀':'⚔ SLAIN ⚔';
   document.getElementById('go-stats').textContent='FLOOR: '+s.score+'   ⚜ '+s.session_coins+'   BEST: '+best;
-  renderShop('go');
-  document.getElementById('go').style.display='block';
+  renderShop('go');document.getElementById('go').style.display='block';
 }
 function renderShop(which){
   const el=document.getElementById(which==='pause'?'upg-list-pause':'upg-list-go');
@@ -773,14 +761,7 @@ function renderShop(which){
   UPGRADES.forEach(u=>{
     const cost=upgCost(u.id),lvl=upgLevels[u.id],can=totalCoins>=cost;
     const div=document.createElement('div');div.className='upg';
-    div.innerHTML=`<div class="upg-info">
-      <div class="upg-name">${u.icon} ${u.name}</div>
-      <div class="upg-desc">${u.desc}</div>
-      <div class="upg-lvl">RANK ${lvl}</div>
-    </div>
-    <button class="upg-btn${can?'':' cant'}" onclick="buyUpg('${u.id}','${which}')">
-      ${can?'⚜ '+cost:'🔒 '+cost}
-    </button>`;
+    div.innerHTML=`<div class="upg-info"><div class="upg-name">${u.icon} ${u.name}</div><div class="upg-desc">${u.desc}</div><div class="upg-lvl">RANK ${lvl}</div></div><button class="upg-btn${can?'':' cant'}" onclick="buyUpg('${u.id}','${which}')">${can?'⚜ '+cost:'🔒 '+cost}</button>`;
     el.appendChild(div);
   });
 }
@@ -805,7 +786,6 @@ function restart(){
   updateHeartsUI(S.pl);
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
 (function boot(){
   const save=loadSave();
   if(save){
