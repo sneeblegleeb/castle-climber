@@ -122,7 +122,6 @@ const SAVE_KEY='castle_climber_save_v2';
 const UPGRADES=[
   {id:'power',    name:'TREBUCHET ARM',    desc:'Mightier launch force',                 icon:'⚔', base:15,  inc:0.9,   baseCost:60,  costMult:1.55},
   {id:'preview',  name:'WIZARD SIGHT',     desc:'Longer trajectory preview arc',         icon:'🔮',base:4,   inc:3,     baseCost:40,  costMult:1.4},
-  {id:'rebounds', name:'SEER STONE',       desc:'Preview bounce off walls & platforms',  icon:'🪬',base:0,   inc:1,     baseCost:70,  costMult:1.6},
   {id:'friction', name:'IRON SABATONS',    desc:'Better grip upon the stonework',        icon:'🛡', base:0.82,inc:-0.04, baseCost:50,  costMult:1.5},
   {id:'gravity',  name:'FEATHERFALL RUNE', desc:'Enchantment lightens thy burden',       icon:'✨',base:0.42,inc:-0.02, baseCost:80,  costMult:1.6},
   {id:'bounce',   name:'RUNED GAUNTLETS',  desc:'Rebound harder off castle walls',       icon:'💎',base:0.6, inc:0.08,  baseCost:40,  costMult:1.4},
@@ -146,7 +145,6 @@ function upgVal(id){const u=UPGRADES.find(x=>x.id===id);return u.base+upgLevels[
 function upgCost(id){const u=UPGRADES.find(x=>x.id===id);return Math.ceil(u.baseCost*Math.pow(u.costMult,upgLevels[id]));}
 function maxHP(){return upgVal('maxhp')|0;}
 function maxAirJumps(){return upgVal('airjumps')|0;}
-function maxRebounds(){return upgVal('rebounds')|0;}
 // Clamp upgrades that degrade — prevents them going negative at high levels
 function frictionVal(){return Math.max(0.05, upgVal('friction'));}
 function airbrakeVal(){return Math.max(0.05, upgVal('airbrake'));}
@@ -491,60 +489,40 @@ function up(){
 // ── Trajectory simulation ─────────────────────────────────────────────────────
 const BOUNCE_COLORS=[[255,200,80],[80,200,255],[180,80,255],[80,255,120],[255,140,40]];
 
-function simTrajectory(sx,sy,vx0,vy0,stepsPerSeg,maxBounces){
-  const grav=upgVal('gravity'),ab=airbrakeVal(),bc=upgVal('bounce'),pf=frictionVal();
-  const hw=9,hh=12; // player half-width, half-height (matches physics)
-  let tx=sx,ty=sy,tvx=vx0,tvy=vy0,bounces=0;
-  const segs=[];
-
-  // Simulate one segment at a time — each gets its own stepsPerSeg budget.
-  // A segment ends when it bounces OR exhausts its step budget.
-  // 'full' = used full budget without bouncing (arc was long enough to connect to next).
-  for(let seg=0;seg<=maxBounces;seg++){
-    const dots=[];
-    let bounced=false;
-    for(let i=0;i<stepsPerSeg;i++){
-      const ptx=tx,pty=ty; // previous position for AABB sweep
-      tvy+=grav;tvx*=ab;tx+=tvx;ty+=tvy;
-
-      // Wall collisions
-      if(tx-hw<=WALL){tx=WALL+hw;tvx=Math.abs(tvx)*bc;bounced=true;}
-      else if(tx+hw>=W-WALL){tx=W-WALL-hw;tvx=-Math.abs(tvx)*bc;bounced=true;}
-
-      // Platform collisions — check all 4 sides like the physics engine does
-      if(!bounced){
-        for(const p of S.plats){
-          const pR=p.x+p.w, pB=p.y+p.h;
-          // Current AABB overlap
-          if(tx+hw<=p.x||tx-hw>=pR||ty+hh<=p.y||ty-hh>=pB) continue;
-          // Determine approach side using previous position
-          const fromTop =(pty+hh)<=p.y;
-          const fromBot =(pty-hh)>=pB;
-          const fromLeft=(ptx+hw)<=p.x;
-          const fromRight=(ptx-hw)>=pR;
-          if(fromTop){
-            ty=p.y-hh; tvy=-Math.abs(tvy)*0.5; tvx*=pf; bounced=true;
-          } else if(fromBot){
-            ty=pB+hh; tvy=Math.abs(tvy)*0.3; bounced=true;
-          } else if(fromLeft){
-            tx=p.x-hw; tvx=-Math.abs(tvx)*bc; bounced=true;
-          } else if(fromRight){
-            tx=pR+hw; tvx=Math.abs(tvx)*bc; bounced=true;
-          } else {
-            // Tunnelled — resolve to top as best guess
-            ty=p.y-hh; tvy=-Math.abs(tvy)*0.5; tvx*=pf; bounced=true;
-          }
-          break;
-        }
+function simTrajectory(sx,sy,vx0,vy0,totalSteps){
+  // Single shared step budget. Bounces consume from the same pool, so a longer
+  // Wizard Sight preview naturally reveals however many bounces fit within it.
+  const grav=upgVal("gravity"),ab=airbrakeVal(),bc=upgVal("bounce"),pf=frictionVal();
+  const hw=9,hh=12;
+  let tx=sx,ty=sy,tvx=vx0,tvy=vy0;
+  const segs=[{dots:[],bounced:false,bi:0}];
+  for(let i=0;i<totalSteps;i++){
+    const ptx=tx,pty=ty;
+    tvy+=grav;tvx*=ab;tx+=tvx;ty+=tvy;
+    let hit=false;
+    if(tx-hw<=WALL){tx=WALL+hw;tvx=Math.abs(tvx)*bc;hit=true;}
+    else if(tx+hw>=W-WALL){tx=W-WALL-hw;tvx=-Math.abs(tvx)*bc;hit=true;}
+    if(!hit){
+      for(const p of S.plats){
+        const pR=p.x+p.w,pB=p.y+p.h;
+        if(tx+hw<=p.x||tx-hw>=pR||ty+hh<=p.y||ty-hh>=pB) continue;
+        const fromTop=(pty+hh)<=p.y,fromBot=(pty-hh)>=pB;
+        const fromLeft=(ptx+hw)<=p.x,fromRight=(ptx-hw)>=pR;
+        if(fromTop){ty=p.y-hh;tvy=-Math.abs(tvy)*0.5;tvx*=pf;hit=true;}
+        else if(fromBot){ty=pB+hh;tvy=Math.abs(tvy)*0.3;hit=true;}
+        else if(fromLeft){tx=p.x-hw;tvx=-Math.abs(tvx)*bc;hit=true;}
+        else if(fromRight){tx=pR+hw;tvx=Math.abs(tvx)*bc;hit=true;}
+        else{ty=p.y-hh;tvy=-Math.abs(tvy)*0.5;tvx*=pf;hit=true;}
+        break;
       }
-
-      dots.push({x:tx,y:ty});
-      if(bounced) break;
     }
-    segs.push({dots, bounced, bi:seg});
-    if(!bounced||seg>=maxBounces) break;  // only start next seg on real contact
-    bounces++;
+    segs[segs.length-1].dots.push({x:tx,y:ty});
+    if(hit){
+      segs[segs.length-1].bounced=true;
+      segs.push({dots:[],bounced:false,bi:segs.length});
+    }
   }
+  if(segs[segs.length-1].dots.length===0) segs.pop();
   return segs;
 }
 
@@ -765,10 +743,9 @@ function drawSling(){
   ctx.beginPath();ctx.moveTo(drag.sx,drag.sy);ctx.lineTo(drag.cx,drag.cy);ctx.stroke();
   ctx.setLineDash([]);ctx.restore();
 
-  // Arc preview — 'preview' controls steps per segment, 'rebounds' controls bounce count (fully decoupled)
-  const numBounces=maxRebounds();
-  const stepsPerSeg=Math.floor(upgVal('preview')*8);  // rank0=32 rank1=56 rank2=80 rank3=104
-  const segs=simTrajectory(ps.x,ps.y,vx0,vy0,stepsPerSeg,numBounces);
+  // Wizard Sight controls total simulation steps — bounces appear naturally within the budget
+  const totalSteps=Math.floor(upgVal('preview')*8);  // rank0=32 rank1=56 rank2=80 rank3+=104
+  const segs=simTrajectory(ps.x,ps.y,vx0,vy0,totalSteps);
 
   // Each segment only exists after a confirmed surface contact.
   // Per-segment fade 1→0; bounce marker only on seg.bounced (real surface hit).
