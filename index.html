@@ -92,19 +92,20 @@ const SAVE_KEY='castle_climber_save_v2';
 
 // ── Upgrades ─────────────────────────────────────────────────────────────────
 const UPGRADES=[
-  {id:'power',   name:'TREBUCHET ARM',    desc:'Mightier launch force',                    icon:'⚔', base:15,  inc:0.9,   baseCost:60,  costMult:1.55},
-  {id:'preview', name:'WIZARD SIGHT',     desc:'Longer trajectory preview arc',            icon:'🔮',base:0,   inc:1,     baseCost:40,  costMult:1.4},
-  {id:'friction',name:'IRON SABATONS',    desc:'Better grip upon the stonework',           icon:'🛡', base:0.82,inc:-0.04, baseCost:50,  costMult:1.5},
-  {id:'gravity', name:'FEATHERFALL RUNE', desc:'Enchantment lightens thy burden',          icon:'✨',base:0.42,inc:-0.02, baseCost:80,  costMult:1.6},
-  {id:'bounce',  name:'RUNED GAUNTLETS',  desc:'Rebound harder off castle walls',          icon:'💎',base:0.6, inc:0.08,  baseCost:40,  costMult:1.4},
-  {id:'coinmag', name:'GILDED AURA',      desc:'Gold is drawn to thee from afar',          icon:'⚜', base:14,  inc:6,     baseCost:30,  costMult:1.35},
-  {id:'coinrate',name:'FORTUNE BLESSING', desc:'More gold glimmers in the castle',         icon:'🪙',base:0.18,inc:0.05,  baseCost:50,  costMult:1.45},
-  {id:'coyote',  name:"SQUIRE'S GRACE",   desc:'Extra moments to leap from ledges',        icon:'🐾',base:0,   inc:4,     baseCost:60,  costMult:1.5},
-  {id:'airbrake',name:'CAPE OF CONTROL',  desc:'Thy cloak steadies thine arc',             icon:'🧣',base:1.0, inc:-0.03, baseCost:40,  costMult:1.4},
-  {id:'coinval', name:'ROYAL TITHE',      desc:"Each coin bears the king's bounty",        icon:'👑',base:1,   inc:1,     baseCost:100, costMult:1.7},
-  {id:'maxhp',   name:'VITALITY OATH',    desc:'Gain an extra heart of health',            icon:'❤️',base:3,   inc:1,     baseCost:80,  costMult:1.8},
-  {id:'fallres', name:'IRONFLESH WARD',   desc:'Reduces fall damage taken',                icon:'🪨',base:0,   inc:0.15,  baseCost:55,  costMult:1.5},
-  {id:'airjumps',name:'WINGED BOOTS',     desc:'Extra mid-air launches per flight',        icon:'🦅',base:0,   inc:1,     baseCost:120, costMult:1.9},
+  {id:'power',    name:'TREBUCHET ARM',    desc:'Mightier launch force',                    icon:'⚔', base:15,  inc:0.9,   baseCost:60,  costMult:1.55},
+  {id:'preview',  name:'WIZARD SIGHT',     desc:'Longer trajectory preview arc',            icon:'🔮',base:6,   inc:3,     baseCost:40,  costMult:1.4},
+  {id:'rebounds', name:'SEER STONE',       desc:'Preview bounce off walls & platforms',     icon:'🪬',base:0,   inc:1,     baseCost:70,  costMult:1.6},
+  {id:'friction', name:'IRON SABATONS',    desc:'Better grip upon the stonework',           icon:'🛡', base:0.82,inc:-0.04, baseCost:50,  costMult:1.5},
+  {id:'gravity',  name:'FEATHERFALL RUNE', desc:'Enchantment lightens thy burden',          icon:'✨',base:0.42,inc:-0.02, baseCost:80,  costMult:1.6},
+  {id:'bounce',   name:'RUNED GAUNTLETS',  desc:'Rebound harder off castle walls',          icon:'💎',base:0.6, inc:0.08,  baseCost:40,  costMult:1.4},
+  {id:'coinmag',  name:'GILDED AURA',      desc:'Gold is drawn to thee from afar',          icon:'⚜', base:14,  inc:6,     baseCost:30,  costMult:1.35},
+  {id:'coinrate', name:'FORTUNE BLESSING', desc:'More gold glimmers in the castle',         icon:'🪙',base:0.18,inc:0.05,  baseCost:50,  costMult:1.45},
+  {id:'coyote',   name:"SQUIRE'S GRACE",   desc:'Extra moments to leap from ledges',        icon:'🐾',base:0,   inc:4,     baseCost:60,  costMult:1.5},
+  {id:'airbrake', name:'CAPE OF CONTROL',  desc:'Thy cloak steadies thine arc',             icon:'🧣',base:1.0, inc:-0.03, baseCost:40,  costMult:1.4},
+  {id:'coinval',  name:'ROYAL TITHE',      desc:"Each coin bears the king's bounty",        icon:'👑',base:1,   inc:1,     baseCost:100, costMult:1.7},
+  {id:'maxhp',    name:'VITALITY OATH',    desc:'Gain an extra heart of health',            icon:'❤️',base:3,   inc:1,     baseCost:80,  costMult:1.8},
+  {id:'fallres',  name:'IRONFLESH WARD',   desc:'Reduces fall damage taken',                icon:'🪨',base:0,   inc:0.15,  baseCost:55,  costMult:1.5},
+  {id:'airjumps', name:'WINGED BOOTS',     desc:'Extra mid-air launches per flight',        icon:'🦅',base:0,   inc:1,     baseCost:120, costMult:1.9},
 ];
 
 let upgLevels={};
@@ -115,6 +116,7 @@ function upgVal(id){const u=UPGRADES.find(x=>x.id===id);return u.base+upgLevels[
 function upgCost(id){const u=UPGRADES.find(x=>x.id===id);return Math.ceil(u.baseCost*Math.pow(u.costMult,upgLevels[id]));}
 function maxHP(){return upgVal('maxhp')|0;}
 function maxAirJumps(){return upgVal('airjumps')|0;}
+function maxRebounds(){return upgVal('rebounds')|0;}
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 function saveGame(s){
@@ -140,8 +142,7 @@ function hashY(y){let h=Math.sin(y*127.1+311.7)*43758.5453;return h-Math.floor(h
 
 function mkS(savedPos){
   const hp=maxHP();
-  const sx=savedPos?savedPos.x:W/2;
-  const sy=savedPos?savedPos.y:0;
+  const sx=savedPos?savedPos.x:W/2, sy=savedPos?savedPos.y:0;
   const shp=savedPos?Math.min(savedPos.hp,hp):hp;
   const s={
     pl:{x:sx,y:sy,vx:0,vy:0,w:18,h:24,onG:false,coyote:0,
@@ -155,24 +156,20 @@ function mkS(savedPos){
     bats:[],
   };
   s.plats.push({x:sx-55,y:sy+55,w:110,h:14,icy:false,torch:false});
-  for(let i=0;i<8;i++) s.bats.push(mkBat(sy+(Math.random()-.5)*H*3,s));
+  for(let i=0;i<8;i++) s.bats.push(mkBat(sy+(Math.random()-.5)*H*3));
   gen(s);
   return s;
 }
 
-// Bat states: 'idle'|'agro'|'diving'|'retreating'
-function mkBat(wy,s){
+function mkBat(wy){
   return{
     x:WALL+10+Math.random()*(W-WALL*2-20),
-    wy,
-    vx:(Math.random()-.5)*1.2,
+    wy, vx:(Math.random()-.5)*1.0,
     flap:Math.random()*Math.PI*2,
     state:'idle',
-    agroTimer:0,   // countdown before dive
-    retreatTimer:0,
-    tx:0,ty:0,     // dive target
-    dvx:0,dvy:0,   // dive velocity
-    hurtTimer:0,   // flash after hitting player
+    agroTimer:0, retreatTimer:0,
+    tx:0,ty:0, dvx:0,dvy:0,
+    hurtTimer:0,
   };
 }
 
@@ -183,7 +180,7 @@ function gen(s){
   if(!s.plats.length){mn=s.pl.y;mx=s.pl.y;}
   let y=mx;while(y<bot+H*.6){y+=65+Math.random()*85;addP(s,y);}
   y=mn;while(y>top-H*.6){y-=65+Math.random()*85;addP(s,y);}
-  while(s.bats.length<8) s.bats.push(mkBat(s.cam+(Math.random()-.5)*H*2,s));
+  while(s.bats.length<8) s.bats.push(mkBat(s.cam+(Math.random()-.5)*H*2));
 }
 function addP(s,wy){
   const avail=W-WALL*2,w=52+Math.random()*84,x=WALL+6+Math.random()*(avail-w-12);
@@ -199,82 +196,79 @@ function cull(s){
   const t=s.cam-H*.5,b=s.cam+H*1.5;
   s.plats=s.plats.filter(p=>p.y>t&&p.y<b);
   s.coins=s.coins.filter(c=>!c.collected&&c.y>t&&c.y<b);
-  // Only cull idle bats that are far away; keep agro bats alive
-  s.bats=s.bats.filter(bt=>{
-    if(bt.state!=='idle') return true;
-    return bt.wy>t-H&&bt.wy<b+H;
-  });
+  s.bats=s.bats.filter(bt=>bt.state!=='idle'||(bt.wy>t-H&&bt.wy<b+H));
 }
 
 function addFloat(x,sy,text,color){floats.push({x,y:sy,vy:-1.4,life:55,text,color:color||'#ffdd00'});}
 
 const FALL_THRESH=10,FALL_SEVERE=16;
 
-// ── Update bats ───────────────────────────────────────────────────────────────
+// ── Bats ──────────────────────────────────────────────────────────────────────
+// Agro rate significantly reduced: 4% chance every ~4 seconds (240 ticks)
+const BAT_AGRO_RATE   = 0.04;
+const BAT_AGRO_PERIOD = 240;  // ticks between agro rolls
+const BAT_DIVE_SPEED  = 5;    // was 7, now slower
+const BAT_IDLE_SPEED  = 0.8;  // gentle drift speed cap
+
 function updateBats(s){
   const pl=s.pl;
-  const plScreenY=pl.y-s.cam;
-
   for(const bt of s.bats){
-    bt.flap+=0.18;
+    bt.flap+=0.14;
     if(bt.hurtTimer>0) bt.hurtTimer--;
 
     if(bt.state==='idle'){
-      // Gentle drift
       bt.x+=bt.vx;
-      bt.wy+=Math.sin(bt.flap*0.3)*0.35;
+      bt.wy+=Math.sin(bt.flap*0.25)*0.3;
       if(bt.x<WALL+8||bt.x>W-WALL-8) bt.vx*=-1;
+      // Clamp idle speed
+      bt.vx=Math.max(-BAT_IDLE_SPEED,Math.min(BAT_IDLE_SPEED,bt.vx));
 
-      // Chance to go agro if on screen and player is visible
-      const batScreenY=bt.wy-s.cam;
-      const onScreen=batScreenY>-50&&batScreenY<H+50;
-      if(onScreen&&!paused&&s.tick%90===0&&Math.random()<0.15){
+      const batSY=bt.wy-s.cam;
+      const onScreen=batSY>-50&&batSY<H+50;
+      // Low frequency agro check
+      if(onScreen&&!paused&&s.tick%BAT_AGRO_PERIOD===0&&Math.random()<BAT_AGRO_RATE){
         bt.state='agro';
-        bt.agroTimer=60+Math.random()*60; // circle for 1–2 sec before diving
+        bt.agroTimer=90+Math.random()*60; // 1.5–2.5 sec warning
       }
     }
     else if(bt.state==='agro'){
-      // Circle menacingly around current pos
-      bt.flap+=0.1; // extra flap speed
-      bt.x+=bt.vx*1.5;
-      bt.wy+=(pl.y-bt.wy)*0.015; // drift toward player Y
+      // Faster flap but still gentle drift — no rush toward player yet
+      bt.flap+=0.06;
+      bt.x+=bt.vx*1.2;
+      // Very slow creep toward player Y to telegraph intent
+      bt.wy+=(pl.y-bt.wy)*0.008;
       if(bt.x<WALL+8||bt.x>W-WALL-8) bt.vx*=-1;
       bt.agroTimer--;
       if(bt.agroTimer<=0){
-        // Initiate dive
         bt.state='diving';
         bt.tx=pl.x; bt.ty=pl.y;
-        const dx=pl.x-bt.x, dy=pl.y-bt.wy;
-        const dist=Math.sqrt(dx*dx+dy*dy)||1;
-        const spd=7;
-        bt.dvx=dx/dist*spd; bt.dvy=dy/dist*spd;
+        const dx=pl.x-bt.x,dy=pl.y-bt.wy,dist=Math.sqrt(dx*dx+dy*dy)||1;
+        bt.dvx=dx/dist*BAT_DIVE_SPEED;
+        bt.dvy=dy/dist*BAT_DIVE_SPEED;
       }
     }
     else if(bt.state==='diving'){
       bt.x+=bt.dvx; bt.wy+=bt.dvy;
-      // Check hit player
-      const dx=pl.x-bt.x, dy=pl.y-bt.wy;
+      const dx=pl.x-bt.x,dy=pl.y-bt.wy;
       if(Math.sqrt(dx*dx+dy*dy)<20){
         takeDamage(s,1,'🦇 HIT!');
-        bt.state='retreating';
-        bt.retreatTimer=80;
-        bt.dvx*=-0.8; bt.dvy=-4; // bounce back upward
+        bt.state='retreating'; bt.retreatTimer=100;
+        bt.dvx*=-0.7; bt.dvy=-3;
         bt.hurtTimer=20;
       }
-      // If bat flies off screen, retreat
       const bsy=bt.wy-s.cam;
       if(bsy<-H||bsy>H*2||bt.x<WALL||bt.x>W-WALL){
-        bt.state='retreating'; bt.retreatTimer=60;
+        bt.state='retreating'; bt.retreatTimer=80;
         bt.dvx*=-0.5; bt.dvy=-2;
       }
     }
     else if(bt.state==='retreating'){
-      bt.x+=bt.dvx*0.9; bt.wy+=bt.dvy;
-      bt.dvx*=0.92; bt.dvy*=0.9;
+      bt.x+=bt.dvx*0.88; bt.wy+=bt.dvy;
+      bt.dvx*=0.9; bt.dvy*=0.88;
       bt.retreatTimer--;
       if(bt.retreatTimer<=0){
         bt.state='idle';
-        bt.vx=(Math.random()-.5)*1.2;
+        bt.vx=(Math.random()-.5)*BAT_IDLE_SPEED*2;
       }
     }
   }
@@ -297,10 +291,10 @@ function update(s){
   const bounce=upgVal('bounce');
   if(pl.x-pl.w/2<WALL){pl.x=WALL+pl.w/2;pl.vx=Math.abs(pl.vx)*bounce;s.wallFlashL=10;}
   if(pl.x+pl.w/2>W-WALL){pl.x=W-WALL-pl.w/2;pl.vx=-Math.abs(pl.vx)*bounce;s.wallFlashR=10;}
-  if(s.wallFlashL>0) s.wallFlashL--;
-  if(s.wallFlashR>0) s.wallFlashR--;
+  if(s.wallFlashL>0)s.wallFlashL--;
+  if(s.wallFlashR>0)s.wallFlashR--;
 
-  if(pl.onG){pl.coyote=upgVal('coyote')|0; pl.airJumpsLeft=maxAirJumps();}
+  if(pl.onG){pl.coyote=upgVal('coyote')|0;pl.airJumpsLeft=maxAirJumps();}
   else if(pl.coyote>0) pl.coyote--;
   pl.onG=false;
 
@@ -318,7 +312,7 @@ function update(s){
         dmg=Math.max(0,dmg-Math.floor(resist));
         if(dmg>0&&Math.random()>resist-Math.floor(resist)) takeDamage(s,dmg,'FALL!');
       }
-      pl.fallVy=0; pl.y=p.y-pl.h/2; pl.vy=0; pl.vx*=lf; pl.onG=true;
+      pl.fallVy=0;pl.y=p.y-pl.h/2;pl.vy=0;pl.vx*=lf;pl.onG=true;
     }
     else if(fromBot){pl.fallVy=0;pl.y=pB+pl.h/2;pl.vy=Math.abs(pl.vy)*0.3;}
     else if(fromL){pl.x=p.x-pl.w/2;pl.vx=-Math.abs(pl.vx)*0.3;}
@@ -349,7 +343,7 @@ function update(s){
   s.score=Math.floor(-pl.y/10);
   if(s.score>best) best=s.score;
   floats=floats.filter(f=>{f.y+=f.vy;f.life--;return f.life>0;});
-  gen(s); cull(s);
+  gen(s);cull(s);
 
   saveTimer++;
   if(saveTimer>300){saveTimer=0;saveGame(s);}
@@ -366,7 +360,7 @@ function takeDamage(s,dmg,label){
   const pl=s.pl;
   if(pl.hurtTimer>0) return;
   pl.hp=Math.max(0,pl.hp-dmg);
-  pl.hurtTimer=60; pl.damageFlash=20;
+  pl.hurtTimer=60;pl.damageFlash=20;
   addFloat(pl.x,pl.y-s.cam-20,label||'-'+dmg+'❤️','#ff4444');
   updateHeartsUI(pl);
   if(pl.hp<=0) killPlayer(s);
@@ -392,12 +386,10 @@ window.addEventListener('mouseup',()=>{if(!paused)up();});
 
 function canLaunch(){
   const pl=S.pl;
-  return pl.onG || pl.coyote>0 || pl.airJumpsLeft>0;
+  return pl.onG||pl.coyote>0||pl.airJumpsLeft>0;
 }
-
 function dn(p){
   if(!S.alive) return;
-  // Allow drag from anywhere on canvas
   drag={sx:p.x,sy:p.y,cx:p.x,cy:p.y};
   document.getElementById('hint').style.display='none';
 }
@@ -406,23 +398,72 @@ function up(){
   if(!drag||!S.alive){drag=null;return;}
   const dx=drag.cx-drag.sx,dy=drag.cy-drag.sy;
   const dist=Math.sqrt(dx*dx+dy*dy);
-  // Need a minimum drag distance to launch
   if(dist<8){drag=null;return;}
-
   if(!canLaunch()){drag=null;return;}
-
   const d=Math.min(dist,130),a=Math.atan2(dy,dx),pw=d/130;
   const power=upgVal('power');
-  // Slingshot: launch OPPOSITE to drag direction
   S.pl.vx=-Math.cos(a)*pw*power;
   S.pl.vy=-Math.sin(a)*pw*power;
-
-  // Consume air jump if not on ground / coyote
-  if(!S.pl.onG && S.pl.coyote<=0){
-    S.pl.airJumpsLeft=Math.max(0,S.pl.airJumpsLeft-1);
-  }
+  if(!S.pl.onG&&S.pl.coyote<=0) S.pl.airJumpsLeft=Math.max(0,S.pl.airJumpsLeft-1);
   S.pl.onG=false;
   drag=null;
+}
+
+// ── Trajectory simulation ─────────────────────────────────────────────────────
+// Bounce colors per segment: gold → cyan → violet → green → orange
+const BOUNCE_COLORS=[
+  [255,200,80],   // 0: initial arc — gold
+  [80, 200,255],  // 1: first bounce — cyan
+  [180,80, 255],  // 2: second bounce — violet
+  [80, 255,120],  // 3: third bounce — green
+  [255,140,40],   // 4: fourth bounce — orange
+];
+
+function simTrajectory(startX,startY,vx0,vy0,maxSteps,maxBounces){
+  // Returns array of segments: [{dots:[{x,y}], bounceIdx}]
+  const grav=upgVal('gravity'), ab=upgVal('airbrake'), bounceCoeff=upgVal('bounce');
+  const platFriction=upgVal('friction');
+  let tx=startX,ty=startY,tvx=vx0,tvy=vy0;
+  let bounceCount=0;
+  let segments=[{dots:[],bounceIdx:0}];
+  let stepBudget=maxSteps;
+
+  while(stepBudget>0&&bounceCount<=maxBounces){
+    tvy+=grav; tvx*=ab;
+    tx+=tvx; ty+=tvy;
+    stepBudget--;
+
+    let bounced=false;
+
+    // Wall bounces
+    if(tx<=WALL+1){
+      tx=WALL+1; tvx=Math.abs(tvx)*bounceCoeff;
+      bounceCount++;bounced=true;
+    }else if(tx>=W-WALL-1){
+      tx=W-WALL-1; tvx=-Math.abs(tvx)*bounceCoeff;
+      bounceCount++;bounced=true;
+    }
+
+    // Platform bounces (top surface only for preview)
+    if(!bounced&&tvy>0){
+      for(const p of S.plats){
+        if(tx+9>p.x&&tx-9<p.x+p.w&&ty>=p.y-2&&ty<=p.y+4){
+          ty=p.y-1; tvy=-Math.abs(tvy)*0.5; tvx*=platFriction;
+          bounceCount++;bounced=true;break;
+        }
+      }
+    }
+
+    // Push dot to current segment
+    segments[segments.length-1].dots.push({x:tx,y:ty});
+
+    // If we bounced and haven't exceeded max, start new segment
+    if(bounced&&bounceCount<=maxBounces){
+      if(bounceCount>maxBounces) break;
+      segments.push({dots:[{x:tx,y:ty}],bounceIdx:bounceCount});
+    }
+  }
+  return segments;
 }
 
 // ── Draw ──────────────────────────────────────────────────────────────────────
@@ -520,7 +561,7 @@ function drawKnight(){
   ctx.fillStyle='#111';ctx.fillRect(x+4,y+4,w-8,2);
   ctx.fillStyle='rgba(255,100,0,0.4)';ctx.fillRect(x+5,y+4,w-10,1);
   ctx.fillStyle='#cc2222';
-  for(let i=0;i<5;i++){const pw=Math.sin(S.tick*0.15+i)*1.5;ctx.fillRect(x+w/2-1,y-4-i+pw,2,3);}
+  for(let i=0;i<5;i++){const pw2=Math.sin(S.tick*0.15+i)*1.5;ctx.fillRect(x+w/2-1,y-4-i+pw2,2,3);}
   ctx.fillStyle='#ff4444';ctx.fillRect(x+w/2-1,y-2,2,4);
   ctx.fillStyle='#8b0000';ctx.fillRect(x-5,y+10,7,12);
   ctx.fillStyle='#cc2222';ctx.fillRect(x-4,y+11,5,10);
@@ -533,47 +574,44 @@ function drawKnight(){
   ctx.restore();
   if(flash) ctx.globalAlpha=1;
 
-  // Air jump indicator dots above player
   const aj=pl.airJumpsLeft;
   if(aj>0&&!pl.onG){
     for(let i=0;i<aj;i++){
-      ctx.fillStyle='rgba(100,200,255,0.8)';
-      ctx.beginPath();ctx.arc(x+w/2-4+i*8,y-10,3,0,Math.PI*2);ctx.fill();
-      ctx.fillStyle='rgba(200,240,255,0.9)';
-      ctx.beginPath();ctx.arc(x+w/2-4+i*8,y-10,1.5,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='rgba(100,200,255,0.8)';ctx.beginPath();ctx.arc(x+w/2-4+i*8,y-10,3,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='rgba(200,240,255,0.9)';ctx.beginPath();ctx.arc(x+w/2-4+i*8,y-10,1.5,0,Math.PI*2);ctx.fill();
     }
   }
 }
 function drawBat(bt){
   const sy=(bt.wy-S.cam)|0;
   if(sy<-30||sy>H+30) return;
-
   const agro=bt.state==='agro'||bt.state==='diving';
   const flash=bt.hurtTimer>0&&Math.floor(bt.hurtTimer/3)%2===0;
-  const wing=Math.sin(bt.flap)*(agro?9:6);
-
+  const wing=Math.sin(bt.flap)*(agro?10:6);
   if(flash) ctx.globalAlpha=0.4;
 
-  // Agro bats glow red
-  if(agro){
-    ctx.fillStyle='rgba(255,0,0,0.15)';
-    ctx.beginPath();ctx.arc(bt.x,sy,18,0,Math.PI*2);ctx.fill();
+  if(agro&&bt.state==='agro'){
+    // Subtle amber eye glow instead of full red ring — just a soft halo behind eyes
+    ctx.fillStyle='rgba(255,140,0,0.12)';
+    ctx.beginPath();ctx.arc(bt.x,sy,10,0,Math.PI*2);ctx.fill();
+  }
+  if(agro&&bt.state==='diving'){
+    // During dive: slightly brighter amber halo
+    ctx.fillStyle='rgba(255,100,0,0.18)';
+    ctx.beginPath();ctx.arc(bt.x,sy,12,0,Math.PI*2);ctx.fill();
   }
 
-  const bc=agro?'#331111':'#221a2a';
+  const bc=agro?'#2a1414':'#221a2a';
   ctx.fillStyle=bc;
-  // Body
   ctx.fillRect((bt.x-3)|0,(sy-2)|0,6,5);
-  // Wings
   ctx.fillRect((bt.x-12)|0,(sy-2+wing)|0,9,4);
   ctx.fillRect((bt.x+3)|0,(sy-2+wing)|0,9,4);
   ctx.fillRect((bt.x-14)|0,(sy+1+wing)|0,3,2);
   ctx.fillRect((bt.x+11)|0,(sy+1+wing)|0,3,2);
-  // Eyes — red when agro, dim when idle
-  ctx.fillStyle=agro?'#ff0000':'#661111';
+  // Eyes: idle = very dim red, agro = brighter amber, diving = orange-red
+  ctx.fillStyle=bt.state==='diving'?'#ff6600':agro?'#cc6600':'#441111';
   ctx.fillRect((bt.x-2)|0,(sy-1)|0,1,1);
   ctx.fillRect((bt.x+1)|0,(sy-1)|0,1,1);
-
   if(flash) ctx.globalAlpha=1;
 }
 
@@ -581,62 +619,53 @@ function drawSling(){
   if(!drag) return;
   const pl=S.pl;
   const ps={x:pl.x,y:pl.y-S.cam};
-
-  const dx=drag.sx-drag.cx, dy=drag.sy-drag.cy;
+  const dx=drag.sx-drag.cx,dy=drag.sy-drag.cy;
   const dist=Math.sqrt(dx*dx+dy*dy);
   if(dist<4) return;
 
   const canFire=canLaunch();
-  const alpha=canFire?1:0.35;
-
-  // Draw drag line from start to current
-  ctx.save();
-  ctx.globalAlpha=alpha*0.6;
-  ctx.strokeStyle='#aa9955';ctx.lineWidth=1.5;ctx.setLineDash([3,4]);
-  ctx.beginPath();ctx.moveTo(drag.sx,drag.sy);ctx.lineTo(drag.cx,drag.cy);ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.globalAlpha=1;
-  ctx.restore();
-
   const pw=Math.min(dist,130)/130;
-  const nx=dx/dist,ny=dy/dist; // launch direction (opposite of drag)
+  const angle=Math.atan2(dy,dx);
   const power=upgVal('power');
-  const vx0=nx*pw*power, vy0=ny*pw*power;
+  const vx0=Math.cos(angle)*pw*power, vy0=Math.sin(angle)*pw*power;
 
-  // ── Curved trajectory arc ──────────────────────────────────────────────
-  const steps=Math.max(8, Math.floor(upgVal('preview')*10));
-  if(steps>0){
-    const grav=upgVal('gravity'),ab=upgVal('airbrake');
-    let tx=ps.x,ty=ps.y,tvx=vx0,tvy=vy0;
-    ctx.globalAlpha=canFire?0.7:0.25;
-    for(let i=0;i<steps;i++){
-      tvy+=grav; tvx*=ab; tx+=tvx; ty+=tvy;
-      const t=i/steps;
-      const r=Math.max(1,3.5*(1-t));
-      const a=1-t*0.7;
-      if(canFire){
-        ctx.fillStyle=`rgba(255,${180+75*t|0},50,${a})`;
-      }else{
-        ctx.fillStyle=`rgba(150,150,150,${a*0.5})`;
-      }
-      ctx.beginPath();ctx.arc(tx,ty,r,0,Math.PI*2);ctx.fill();
-      if(tx<WALL||tx>W-WALL) break;
+  // Drag indicator line (subtle)
+  ctx.save();
+  ctx.globalAlpha=canFire?0.35:0.18;
+  ctx.strokeStyle='#aa9955';ctx.lineWidth=1;ctx.setLineDash([2,5]);
+  ctx.beginPath();ctx.moveTo(drag.sx,drag.sy);ctx.lineTo(drag.cx,drag.cy);ctx.stroke();
+  ctx.setLineDash([]);ctx.restore();
+
+  // ── Trajectory arc with rebound segments ─────────────────────────────────
+  const baseSteps=Math.floor(upgVal('preview')*5); // base steps per segment
+  const numRebounds=maxRebounds();                  // 0 = no rebound preview
+  const totalSteps=baseSteps*(numRebounds+1);
+  const segments=simTrajectory(ps.x,ps.y,vx0,vy0,totalSteps,numRebounds);
+
+  ctx.globalAlpha=canFire?1:0.3;
+  segments.forEach((seg,si)=>{
+    const col=BOUNCE_COLORS[Math.min(si,BOUNCE_COLORS.length-1)];
+    const totalDots=seg.dots.length;
+    seg.dots.forEach((d,di)=>{
+      const t=di/Math.max(totalDots-1,1);
+      // Dots shrink and fade toward end of each segment
+      const r=Math.max(0.8,3*(1-t*0.6));
+      const alpha=(1-t*0.55)*(si===0?1:0.75);
+      ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
+      // Convert world Y to screen Y
+      ctx.beginPath();ctx.arc(d.x,d.y,r,0,Math.PI*2);ctx.fill();
+    });
+
+    // Draw a small 'X' marker at the bounce point between segments
+    if(si<segments.length-1&&seg.dots.length>0){
+      const last=seg.dots[seg.dots.length-1];
+      const nextCol=BOUNCE_COLORS[Math.min(si+1,BOUNCE_COLORS.length-1)];
+      ctx.strokeStyle=`rgba(${nextCol[0]},${nextCol[1]},${nextCol[2]},0.9)`;
+      ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(last.x-4,last.y-4);ctx.lineTo(last.x+4,last.y+4);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(last.x+4,last.y-4);ctx.lineTo(last.x-4,last.y+4);ctx.stroke();
     }
-    ctx.globalAlpha=1;
-  }
-
-  // Arrow from player showing launch direction
-  const al=22+pw*30, ax=ps.x+nx*al, ay=ps.y+ny*al;
-  const perx=-ny,pery=nx;
-  ctx.globalAlpha=alpha;
-  ctx.strokeStyle=canFire?`rgba(255,180,50,${0.5+pw*0.5})`:'rgba(130,130,130,0.5)';
-  ctx.lineWidth=2;
-  ctx.beginPath();ctx.moveTo(ps.x,ps.y);ctx.lineTo(ax,ay);ctx.stroke();
-  ctx.fillStyle=canFire?`rgba(255,180,50,${0.5+pw*0.5})`:'rgba(130,130,130,0.5)';
-  ctx.beginPath();ctx.moveTo(ax,ay);
-  ctx.lineTo(ax-nx*8+perx*4,ay-ny*8+pery*4);
-  ctx.lineTo(ax-nx*8-perx*4,ay-ny*8-pery*4);
-  ctx.closePath();ctx.fill();
+  });
   ctx.globalAlpha=1;
 
   // Power bar
@@ -648,13 +677,11 @@ function drawSling(){
   ctx.fillStyle='#886633';ctx.font='8px monospace';ctx.textAlign='right';
   ctx.fillText('FORCE',W-WALL-2,H-10);ctx.textAlign='left';
 
-  // Locked indicator
   if(!canFire){
     ctx.fillStyle='rgba(255,80,80,0.8)';ctx.font='bold 9px monospace';ctx.textAlign='center';
     ctx.fillText('NO JUMPS LEFT',W/2,H-12);ctx.textAlign='left';
   }
 
-  // Air jump pips remaining
   const aj=pl.airJumpsLeft;
   if(!pl.onG&&pl.coyote<=0&&maxAirJumps()>0){
     ctx.fillStyle='rgba(100,200,255,0.6)';ctx.font='9px monospace';ctx.textAlign='center';
