@@ -106,23 +106,31 @@ const UPGRADES=[
   {id:'maxhp',    name:'VITALITY OATH',    desc:'Gain an extra heart of health',         icon:'❤️',base:3,   inc:1,     baseCost:80,  costMult:1.8},
   {id:'fallres',  name:'IRONFLESH WARD',   desc:'Reduces fall damage taken',             icon:'🪨',base:0,   inc:0.15,  baseCost:55,  costMult:1.5},
   {id:'airjumps', name:'WINGED BOOTS',     desc:'Extra mid-air launches per flight',     icon:'🦅',base:0,   inc:1,     baseCost:120, costMult:1.9},
+  {id:'batradius',name:'WARDING SIGIL',    desc:'Bats cannot agro within a wider radius', icon:'🔯',base:80,  inc:25,    baseCost:45,  costMult:1.45},
+  {id:'heartrate',name:'BLESSED GROUNDS',  desc:'Hearts of healing appear more often',   icon:'💖',base:0.04,inc:0.025, baseCost:60,  costMult:1.55},
 ];
 
 let upgLevels={};
 UPGRADES.forEach(u=>upgLevels[u.id]=0);
-let totalCoins=0,best=0;
+let totalCoins=0,best=0,lowest=0;
 
 function upgVal(id){const u=UPGRADES.find(x=>x.id===id);return u.base+upgLevels[id]*u.inc;}
 function upgCost(id){const u=UPGRADES.find(x=>x.id===id);return Math.ceil(u.baseCost*Math.pow(u.costMult,upgLevels[id]));}
 function maxHP(){return upgVal('maxhp')|0;}
 function maxAirJumps(){return upgVal('airjumps')|0;}
 function maxRebounds(){return upgVal('rebounds')|0;}
+// Clamp upgrades that degrade — prevents them going negative at high levels
+function frictionVal(){return Math.max(0.05, upgVal('friction'));}
+function airbrakeVal(){return Math.max(0.05, upgVal('airbrake'));}
+// Bat agro minimum distance — capped at 90% of half-screen so it can never cover full screen
+function batAgroRadius(){return Math.min(upgVal('batradius'), H*0.45);}
+function heartSpawnRate(){return upgVal('heartrate');}
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 function saveGame(s){
   try{
     localStorage.setItem(SAVE_KEY,JSON.stringify({
-      upgLevels,totalCoins,best,
+      upgLevels,totalCoins,best,lowest,
       pos:s?{x:s.pl.x,y:s.pl.y,hp:s.pl.hp}:null
     }));
   }catch(e){}
@@ -131,7 +139,7 @@ function loadSave(){try{const r=localStorage.getItem(SAVE_KEY);return r?JSON.par
 function wipeSave(){
   localStorage.removeItem(SAVE_KEY);
   upgLevels={};UPGRADES.forEach(u=>upgLevels[u.id]=0);
-  totalCoins=0;best=0;
+  totalCoins=0;best=0;lowest=0;
 }
 function confirmWipe(){if(confirm('Wipe all progress? This cannot be undone.')){wipeSave();restart();}}
 
@@ -157,18 +165,25 @@ function mkS(savedPos){
     // Track which platform world-Y bands have already been assigned coins
     // so re-generation after culling doesn't re-roll them.
     coinSeeds:{},
+    collectedHearts:new Set(), // track which heart ids have been picked up
     score:Math.floor(-sy/10),session_coins:0,
     alive:true,tick:0,
     bats:[],
+    hearts:[], // healing hearts
   };
   s.plats.push({x:sx-55,y:sy+55,w:110,h:14,icy:false,torch:false,id:0});
   s.coinSeeds[0]=0; // starting platform: no coin
-  for(let i=0;i<8;i++) s.bats.push(mkBat(sy+(Math.random()-.5)*H*3));
+  for(let i=0;i<8;i++) s.bats.push(mkBat(sy+(Math.random()-.5)*H*3, sy));
   gen(s);
   return s;
 }
 
-function mkBat(wy){
+function mkBat(wy,plY){
+  // Ensure bat spawns at least batAgroRadius away from player world-Y
+  const minDist=batAgroRadius()+50;
+  if(plY!==undefined&&Math.abs(wy-plY)<minDist){
+    wy = wy<plY ? plY-minDist : plY+minDist;
+  }
   return{x:WALL+10+Math.random()*(W-WALL*2-20),wy,vx:(Math.random()-.5)*1.0,
     flap:Math.random()*Math.PI*2,state:'idle',agroTimer:0,retreatTimer:0,
     tx:0,ty:0,dvx:0,dvy:0,hurtTimer:0};
@@ -204,7 +219,7 @@ function gen(s){
     y-=65+Math.random()*85;
     addP(s,y);
   }
-  while(s.bats.length<8) s.bats.push(mkBat(s.cam+(Math.random()-.5)*H*2));
+  while(s.bats.length<8) s.bats.push(mkBat(s.cam+(Math.random()-.5)*H*2, s.pl.y));
 }
 
 function addP(s,wy){
@@ -221,31 +236,40 @@ function addP(s,wy){
   const torch=!icy&&rng4<0.3;
   s.plats.push({x,y:wy,w,h:14,icy,torch,id});
 
-  // Coin placement: only roll if we haven't seen this platform id before
+  // Only process coins/hearts once per platform id
   if(!(id in s.coinSeeds)){
+    // Coin placement
     const rate=Math.min(upgVal('coinrate'),0.75);
-    const cr=hash2(id,5);
-    const cr2=hash2(id,6);
+    const cr=hash2(id,5),cr2=hash2(id,6);
     const count=cr<rate?(cr2<0.15?2:1):0;
     s.coinSeeds[id]=count;
     for(let i=0;i<count;i++){
-      const cx=hash2(id,7+i);
-      const cy=hash2(id,9+i);
+      const cx=hash2(id,7+i),cy=hash2(id,9+i);
       s.coins.push({x:x+10+cx*(w-20),y:wy-20-cy*28,r:6,collected:false,bob:hash2(id,11+i)*Math.PI*2,id:id*10+i});
     }
+    // Heart spawning — rare, uses separate hash slots so it never conflicts with coins
+    const hr=hash2(id,13);
+    if(hr<heartSpawnRate()){
+      const hx=x+10+hash2(id,14)*(w-20);
+      s.hearts.push({x:hx,y:wy-28,collected:false,bob:hash2(id,15)*Math.PI*2,id:'h'+id});
+    }
   } else {
-    // Re-spawn coins for this platform only if not collected
+    // Re-spawn coins for this platform if not yet collected (culled and came back on screen)
     const count=s.coinSeeds[id];
     for(let i=0;i<count;i++){
       const cid=id*10+i;
-      if(!s.coins.some(c=>c.id===cid)){
-        // Check if it was ever collected — we track via coinSeeds negative flag
-        if(s.coinSeeds[id]>=0){
-          // Not collected; re-add (was culled off screen)
-          const cx=hash2(id,7+i);
-          const cy=hash2(id,9+i);
-          s.coins.push({x:x+10+cx*(w-20),y:wy-20-cy*28,r:6,collected:false,bob:hash2(id,11+i)*Math.PI*2,id:cid});
-        }
+      if(s.coinSeeds[id]>=0&&!s.coins.some(c=>c.id===cid)){
+        const cx=hash2(id,7+i),cy=hash2(id,9+i);
+        s.coins.push({x:x+10+cx*(w-20),y:wy-20-cy*28,r:6,collected:false,bob:hash2(id,11+i)*Math.PI*2,id:cid});
+      }
+    }
+    // Re-spawn heart if not collected and not on screen
+    const hid='h'+id;
+    if(!s.collectedHearts.has(hid)&&!s.hearts.some(h=>h.id===hid)){
+      const hr=hash2(id,13);
+      if(hr<heartSpawnRate()){
+        const hx=x+10+hash2(id,14)*(w-20);
+        s.hearts.push({x:hx,y:wy-28,collected:false,bob:hash2(id,15)*Math.PI*2,id:hid});
       }
     }
   }
@@ -258,6 +282,7 @@ function cull(s){
   const b=s.cam+H+margin;
   s.plats=s.plats.filter(p=>p.y>t&&p.y<b);
   s.coins=s.coins.filter(c=>!c.collected&&c.y>t&&c.y<b);
+  s.hearts=s.hearts.filter(h=>!h.collected&&h.y>t&&h.y<b);
   s.bats=s.bats.filter(bt=>bt.state!=='idle'||(bt.wy>t-H&&bt.wy<b+H));
 }
 
@@ -281,7 +306,8 @@ function updateBats(s){
       if(bt.x<WALL+8||bt.x>W-WALL-8) bt.vx*=-1;
       bt.vx=Math.max(-BAT_IDLE_SPEED,Math.min(BAT_IDLE_SPEED,bt.vx));
       const bsy=bt.wy-s.cam;
-      if(bsy>-50&&bsy<H+50&&!paused&&s.tick%BAT_AGRO_PERIOD===0&&Math.random()<BAT_AGRO_RATE){
+      const distToPlayer=Math.sqrt((bt.x-pl.x)**2+(bt.wy-pl.y)**2);
+      if(bsy>-50&&bsy<H+50&&!paused&&distToPlayer>batAgroRadius()&&s.tick%BAT_AGRO_PERIOD===0&&Math.random()<BAT_AGRO_RATE){
         bt.state='agro';bt.agroTimer=90+Math.random()*60;
       }
     } else if(bt.state==='agro'){
@@ -315,7 +341,7 @@ function updateBats(s){
 function update(s){
   s.tick++;
   const pl=s.pl,prevY=pl.y,prevX=pl.x;
-  const grav=upgVal('gravity'),ab=upgVal('airbrake');
+  const grav=upgVal('gravity'),ab=airbrakeVal();
 
   if(pl.vy>0) pl.fallVy=Math.max(pl.fallVy,pl.vy);
   pl.vy+=grav;
@@ -339,7 +365,7 @@ function update(s){
     const pR=p.x+p.w,pB=p.y+p.h;
     if(plR<=p.x||plL>=pR||plF<=p.y||plT>=pB) continue;
     const fromTop=prF<=p.y,fromBot=prT>=pB,fromL=prR<=p.x,fromR=prL>=pR;
-    const lf=p.icy?0.99:upgVal('friction');
+    const lf=p.icy?0.99:frictionVal();
     if(fromTop){
       if(pl.fallVy>=FALL_THRESH){
         const resist=upgVal('fallres');
@@ -354,7 +380,7 @@ function update(s){
     else{
       const dT=Math.abs(plF-p.y),dB=Math.abs(plT-pB),dL=Math.abs(plR-p.x),dR=Math.abs(plL-pR);
       const m=Math.min(dT,dB,dL,dR);
-      if(m===dT){pl.fallVy=0;pl.y=p.y-pl.h/2;pl.vy=0;pl.onG=true;}
+      if(m===dT){pl.fallVy=0;pl.y=p.y-pl.h/2;pl.vy=0;pl.vx*=lf;pl.onG=true;}
       else if(m===dB){pl.fallVy=0;pl.y=pB+pl.h/2;pl.vy=Math.abs(pl.vy)*0.3;}
       else if(m===dL){pl.x=p.x-pl.w/2;pl.vx=-Math.abs(pl.vx)*0.3;}
       else{pl.x=pR+pl.w/2;pl.vx=Math.abs(pl.vx)*0.3;}
@@ -378,17 +404,36 @@ function update(s){
     }
   }
 
+  // Heart collection
+  for(const heart of s.hearts){
+    if(heart.collected) continue;
+    heart.bob+=0.04;
+    const dx=pl.x-heart.x,dy=pl.y-heart.y,dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist<18){
+      heart.collected=true;
+      s.collectedHearts.add(heart.id);
+      if(pl.hp<pl.maxHp){
+        pl.hp=Math.min(pl.maxHp,pl.hp+1);
+        addFloat(heart.x,heart.y-s.cam,'❤️ +1','#ff88aa');
+        updateHeartsUI(pl);
+      } else {
+        addFloat(heart.x,heart.y-s.cam,'FULL','#ff88aa');
+      }
+    }
+  }
+
   updateBats(s);
   s.cam+=(pl.y-H*.4-s.cam)*.07;
   s.score=Math.floor(-pl.y/10);
   if(s.score>best) best=s.score;
+  if(s.score<lowest) lowest=s.score;
   floats=floats.filter(f=>{f.y+=f.vy;f.life--;return f.life>0;});
   gen(s);cull(s);
 
   if(++saveTimer>300){saveTimer=0;saveGame(s);}
 
   document.getElementById('score').textContent='FLOOR: '+s.score;
-  document.getElementById('best').textContent='BEST: '+best;
+  document.getElementById('best').textContent='BEST: '+best+' / '+lowest;
   document.getElementById('coindisp').textContent='⚜ '+totalCoins;
   updateHeartsUI(pl);
   if(pl.y-s.cam>H+220){pl.hp=0;killPlayer(s);}
@@ -437,7 +482,7 @@ function up(){
 const BOUNCE_COLORS=[[255,200,80],[80,200,255],[180,80,255],[80,255,120],[255,140,40]];
 
 function simTrajectory(sx,sy,vx0,vy0,maxSteps,maxBounces){
-  const grav=upgVal('gravity'),ab=upgVal('airbrake'),bc=upgVal('bounce'),pf=upgVal('friction');
+  const grav=upgVal('gravity'),ab=airbrakeVal(),bc=upgVal('bounce'),pf=frictionVal();
   let tx=sx,ty=sy,tvx=vx0,tvy=vy0,bounces=0;
   const segs=[{dots:[],bi:0}];
   for(let i=0;i<maxSteps&&bounces<=maxBounces;i++){
@@ -564,6 +609,32 @@ function drawGold(coin){
   ctx.fillRect((coin.x-1)|0,(sy-5)|0,2,2);
 }
 
+function drawHeart(heart){
+  if(heart.collected) return;
+  const sy=(heart.y-S.cam+Math.sin(heart.bob)*3)|0;
+  const hx=heart.x|0;
+  // Soft pink glow
+  const grd=ctx.createRadialGradient(hx,sy,0,hx,sy,16);
+  grd.addColorStop(0,'rgba(255,100,140,0.35)');grd.addColorStop(1,'rgba(255,50,80,0)');
+  ctx.fillStyle=grd;ctx.beginPath();ctx.arc(hx,sy,16,0,Math.PI*2);ctx.fill();
+  // Pixel heart shape (12x11 px)
+  const px=(x,y,w,h)=>ctx.fillRect(hx-6+x,sy-5+y,w,h);
+  ctx.fillStyle='#cc2244';
+  px(1,0,3,2); px(5,0,3,2);
+  px(0,1,4,2); px(4,1,4,2);
+  px(0,2,9,3);
+  px(1,5,7,2);
+  px(2,7,5,2);
+  px(3,9,3,1);
+  px(4,10,1,1);
+  // Highlight
+  ctx.fillStyle='#ff6688';
+  px(1,1,2,1); px(5,1,2,1);
+  ctx.fillStyle='#ff99aa';
+  px(1,2,1,1);
+}
+
+
 function drawKnight(){
   const pl=S.pl;
   const flash=pl.damageFlash>0&&Math.floor(pl.damageFlash/4)%2===0;
@@ -616,12 +687,16 @@ function drawBat(bt){
   if(flash) ctx.globalAlpha=0.4;
   if(agro&&bt.state==='agro'){ctx.fillStyle='rgba(255,140,0,0.12)';ctx.beginPath();ctx.arc(bt.x,sy,10,0,Math.PI*2);ctx.fill();}
   if(agro&&bt.state==='diving'){ctx.fillStyle='rgba(255,100,0,0.18)';ctx.beginPath();ctx.arc(bt.x,sy,12,0,Math.PI*2);ctx.fill();}
-  ctx.fillStyle=agro?'#2a1414':'#221a2a';
+  ctx.fillStyle=agro?'#3d1010':'#2a2040';
   ctx.fillRect((bt.x-3)|0,(sy-2)|0,6,5);
   ctx.fillRect((bt.x-12)|0,(sy-2+wing)|0,9,4);
   ctx.fillRect((bt.x+3)|0,(sy-2+wing)|0,9,4);
   ctx.fillRect((bt.x-14)|0,(sy+1+wing)|0,3,2);
   ctx.fillRect((bt.x+11)|0,(sy+1+wing)|0,3,2);
+  // Wing membrane highlight so they read against the wall
+  ctx.fillStyle=agro?'#5a1818':'#3d3060';
+  ctx.fillRect((bt.x-11)|0,(sy-1+wing)|0,7,2);
+  ctx.fillRect((bt.x+4)|0,(sy-1+wing)|0,7,2);
   ctx.fillStyle=bt.state==='diving'?'#ff6600':agro?'#cc6600':'#441111';
   ctx.fillRect((bt.x-2)|0,(sy-1)|0,1,1);ctx.fillRect((bt.x+1)|0,(sy-1)|0,1,1);
   if(flash) ctx.globalAlpha=1;
@@ -711,6 +786,7 @@ function frame(){
   for(const bt of S.bats) drawBat(bt);
   for(const p of S.plats) drawPlatform(p);
   for(const c of S.coins) drawGold(c);
+  for(const h of S.hearts) drawHeart(h);
   drawKnight();
   drawWalls();
   drawSling();
@@ -752,7 +828,7 @@ function dieAndShowGO(){
 function showGO(s){
   document.getElementById('pausebtn').style.display='none';
   document.getElementById('go-title').textContent=s.pl.hp<=0?'💀 FALLEN 💀':'⚔ SLAIN ⚔';
-  document.getElementById('go-stats').textContent='FLOOR: '+s.score+'   ⚜ '+s.session_coins+'   BEST: '+best;
+  document.getElementById('go-stats').textContent='FLOOR: '+s.score+'   ⚜ '+s.session_coins+'   BEST: '+best+' / '+lowest;
   renderShop('go');document.getElementById('go').style.display='block';
 }
 function renderShop(which){
@@ -792,9 +868,10 @@ function restart(){
     if(save.upgLevels){upgLevels=save.upgLevels;UPGRADES.forEach(u=>{if(upgLevels[u.id]==null)upgLevels[u.id]=0;});}
     if(save.totalCoins!=null) totalCoins=save.totalCoins;
     if(save.best!=null) best=save.best;
+    if(save.lowest!=null) lowest=save.lowest;
   }
   document.getElementById('coindisp').textContent='⚜ '+totalCoins;
-  document.getElementById('best').textContent='BEST: '+best;
+  document.getElementById('best').textContent='BEST: '+best+' / '+lowest;
   S=mkS(save&&save.pos?save.pos:null);
   updateHeartsUI(S.pl);
   frame();
