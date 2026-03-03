@@ -541,8 +541,8 @@ function simTrajectory(sx,sy,vx0,vy0,stepsPerSeg,maxBounces){
       dots.push({x:tx,y:ty});
       if(bounced) break;
     }
-    segs.push({dots, full:!bounced, bi:seg});
-    if(seg>=maxBounces) break;
+    segs.push({dots, bounced, bi:seg});
+    if(!bounced||seg>=maxBounces) break;  // only start next seg on real contact
     bounces++;
   }
   return segs;
@@ -770,33 +770,26 @@ function drawSling(){
   const stepsPerSeg=Math.floor(upgVal('preview')*0.6+3);
   const segs=simTrajectory(ps.x,ps.y,vx0,vy0,stepsPerSeg,numBounces);
 
-  // Global fade: t runs 0→1 across ALL segments combined so opacity is smooth
-  // across bounces and doesn't reset at each segment boundary.
-  const totalDots=segs.reduce((a,seg)=>a+seg.dots.length,0);
-  let gdi=0;
+  // Each segment only exists after a confirmed surface contact.
+  // Per-segment fade 1→0; bounce marker only on seg.bounced (real surface hit).
   ctx.globalAlpha=canFire?1:0.3;
   segs.forEach((seg,si)=>{
     const col=BOUNCE_COLORS[Math.min(si,BOUNCE_COLORS.length-1)];
-    seg.dots.forEach((d)=>{
-      const gt=gdi/Math.max(totalDots-1,1);
-      const fade=1-gt*gt;
-      const r=Math.max(0.8,3*(1-gt*0.6));
+    const n=seg.dots.length;
+    seg.dots.forEach((d,di)=>{
+      const t=di/Math.max(n-1,1);
+      const fade=1-t*t;
+      const r=Math.max(0.8,3*(1-t*0.5));
       const alpha=fade*(si===0?1:0.85);
-      gdi++;
       if(alpha<0.02) return;
       ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
       ctx.beginPath();ctx.arc(d.x,d.y-camY,r,0,Math.PI*2);ctx.fill();
     });
-    // Always draw bounce marker between segments — regardless of whether the
-    // previous arc hit a surface. This ensures rebound preview always appears
-    // when the 'rebounds' upgrade is active, even if the arc ran out of steps.
-    if(si<segs.length-1&&seg.dots.length>0){
+    if(seg.bounced&&si<segs.length-1&&seg.dots.length>0){
       const last=seg.dots[seg.dots.length-1];
       const lsy=last.y-camY;
-      const gt=(gdi-1)/Math.max(totalDots-1,1);
-      const markerA=(1-gt)*0.9;
       const nc=BOUNCE_COLORS[Math.min(si+1,BOUNCE_COLORS.length-1)];
-      ctx.strokeStyle=`rgba(${nc[0]},${nc[1]},${nc[2]},${markerA})`;ctx.lineWidth=1.5;
+      ctx.strokeStyle=`rgba(${nc[0]},${nc[1]},${nc[2]},0.9)`;ctx.lineWidth=1.5;
       ctx.beginPath();ctx.moveTo(last.x-4,lsy-4);ctx.lineTo(last.x+4,lsy+4);ctx.stroke();
       ctx.beginPath();ctx.moveTo(last.x+4,lsy-4);ctx.lineTo(last.x-4,lsy+4);ctx.stroke();
     }
