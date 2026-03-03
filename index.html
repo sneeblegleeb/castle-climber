@@ -99,7 +99,7 @@ const UPGRADES=[
   {id:'gravity',  name:'FEATHERFALL RUNE', desc:'Enchantment lightens thy burden',       icon:'✨',base:0.42,inc:-0.02, baseCost:80,  costMult:1.6},
   {id:'bounce',   name:'RUNED GAUNTLETS',  desc:'Rebound harder off castle walls',       icon:'💎',base:0.6, inc:0.08,  baseCost:40,  costMult:1.4},
   {id:'coinmag',  name:'GILDED AURA',      desc:'Gold is drawn to thee from afar',       icon:'⚜', base:14,  inc:6,     baseCost:30,  costMult:1.35},
-  {id:'coinrate', name:'FORTUNE BLESSING', desc:'More gold glimmers in the castle',      icon:'🪙',base:0.18,inc:0.05,  baseCost:50,  costMult:1.45},
+  {id:'coinrate', name:'FORTUNE BLESSING', desc:'More gold coins float through the castle',icon:'🪙',base:1.0, inc:0.4,   baseCost:50,  costMult:1.45},
   {id:'coyote',   name:"SQUIRE'S GRACE",   desc:'Extra moments to leap from ledges',     icon:'🐾',base:0,   inc:4,     baseCost:60,  costMult:1.5},
   {id:'airbrake', name:'CAPE OF CONTROL',  desc:'Thy cloak steadies thine arc',          icon:'🧣',base:1.0, inc:-0.03, baseCost:40,  costMult:1.4},
   {id:'coinval',  name:'ROYAL TITHE',      desc:"Each coin bears the king's bounty",     icon:'👑',base:1,   inc:1,     baseCost:100, costMult:1.7},
@@ -162,17 +162,17 @@ function mkS(savedPos){
         airJumpsLeft:maxAirJumps()},
     cam:sy-H*.38,
     plats:[],coins:[],
-    // Track which platform world-Y bands have already been assigned coins
-    // so re-generation after culling doesn't re-roll them.
-    coinSeeds:{},
-    collectedHearts:new Set(), // track which heart ids have been picked up
+    // Independent pickup spawner cursors
+    coinCursorDown:sy+80, coinCursorUp:sy+80,
+    heartCursorDown:sy+180, heartCursorUp:sy+180,
+    collectedCoins:new Set(),
+    collectedHearts:new Set(),
     score:Math.floor(-sy/10),session_coins:0,
     alive:true,tick:0,
     bats:[],
     hearts:[], // healing hearts
   };
   s.plats.push({x:sx-55,y:sy+55,w:110,h:14,icy:false,torch:false,id:0});
-  s.coinSeeds[0]=0; // starting platform: no coin
   for(let i=0;i<8;i++) s.bats.push(mkBat(sy+(Math.random()-.5)*H*3, sy));
   gen(s);
   return s;
@@ -193,93 +193,77 @@ function mkBat(wy,plY){
 // This ID is used to seed coin placement so that re-generating a culled platform
 // does NOT re-roll a new coin — it reuses the same deterministic result.
 function platId(wy){
-  // Round to nearest 10 to absorb float drift, then hash to int
-  return Math.round(wy/10);
+  // Math.round(-4.9) = -5, Math.round(4.9) = 5. Add 0 to normalize -0 to 0.
+  return Math.round(wy/10)||0;
 }
 
 function gen(s){
-  // Use SYMMETRIC cull margins so up and down are treated identically.
-  // Generation range: 1H above cam to 1.5H below cam.
-  const top=s.cam-H;
-  const bot=s.cam+H*1.5;
+  const margin=H*0.75;
+  const top=s.cam-margin, bot=s.cam+H+margin;
 
+  // Platforms
   let mn=Infinity,mx=-Infinity;
   for(const p of s.plats){if(p.y<mn)mn=p.y;if(p.y>mx)mx=p.y;}
   if(!s.plats.length){mn=s.pl.y;mx=s.pl.y;}
+  let y=mx; while(y<bot){y+=65+Math.random()*85;if(y<bot)addP(s,y);}
+  y=mn;     while(y>top){y-=65+Math.random()*85;if(y>top)addP(s,y);}
 
-  // Generate downward
-  let y=mx;
-  while(y<bot+H*0.5){
-    y+=65+Math.random()*85;
-    addP(s,y);
-  }
-  // Generate upward
-  y=mn;
-  while(y>top-H*0.5){
-    y-=65+Math.random()*85;
-    addP(s,y);
-  }
-  while(s.bats.length<8) s.bats.push(mkBat(s.cam+(Math.random()-.5)*H*2, s.pl.y));
+  // Independent pickup spawning — cursors advance in each direction
+  // coinrate upgrade controls density: base gap ~130px, each rank tightens it
+  const coinGap=Math.max(40,130/Math.max(0.5,upgVal('coinrate')));
+  const heartGap=300;
+  while(s.coinCursorDown <bot){s.coinCursorDown +=coinGap *(0.8+Math.random()*0.4);tryPlaceCoin(s,s.coinCursorDown);}
+  while(s.coinCursorUp   >top){s.coinCursorUp   -=coinGap *(0.8+Math.random()*0.4);tryPlaceCoin(s,s.coinCursorUp);}
+  while(s.heartCursorDown<bot){s.heartCursorDown+=heartGap*(0.75+Math.random()*0.5);tryPlaceHeart(s,s.heartCursorDown);}
+  while(s.heartCursorUp  >top){s.heartCursorUp  -=heartGap*(0.75+Math.random()*0.5);tryPlaceHeart(s,s.heartCursorUp);}
+
+  // Bat top-up (idle only)
+  const idle=s.bats.filter(bt=>bt.state==='idle').length;
+  let add=8-idle; while(add-->0) s.bats.push(mkBat(s.cam+(Math.random()-.5)*H*2,s.pl.y));
+}
+
+// True if world-point (wx,wy) with radius r overlaps any platform AABB
+function platOverlap(s,wx,wy,r){
+  for(const p of s.plats)
+    if(wx+r>p.x&&wx-r<p.x+p.w&&wy+r>p.y-2&&wy-r<p.y+p.h+2) return true;
+  return false;
+}
+
+function tryPlaceCoin(s,wy){
+  const band=Math.round(wy/7);          // stable ID per 7px band
+  if(s.collectedCoins.has(band)) return;
+  if(s.coins.some(c=>c.id===band)) return;
+  const wx=WALL+14+hash2(band,40)*(W-WALL*2-28);
+  let cy=wy;
+  for(let i=0;i<8;i++){if(!platOverlap(s,wx,cy,9))break;cy-=12;}
+  s.coins.push({x:wx,y:cy,collected:false,bob:hash2(band,41)*Math.PI*2,id:band});
+}
+
+function tryPlaceHeart(s,wy){
+  const band=Math.round(wy/12);
+  const hid='ht'+band;
+  if(s.collectedHearts.has(hid)) return;
+  if(s.hearts.some(h=>h.id===hid)) return;
+  if(hash2(band,50)>heartSpawnRate()) return;  // respect heartrate upgrade
+  const wx=WALL+18+hash2(band,51)*(W-WALL*2-36);
+  let cy=wy;
+  for(let i=0;i<8;i++){if(!platOverlap(s,wx,cy,11))break;cy-=14;}
+  s.hearts.push({x:wx,y:cy,collected:false,bob:hash2(band,52)*Math.PI*2,id:hid});
 }
 
 function addP(s,wy){
-  // Don't add duplicate platforms at same world band
   const id=platId(wy);
   if(s.plats.some(p=>p.id===id)) return;
-
   const avail=W-WALL*2;
-  // Use deterministic layout per id so re-generated platforms look the same
-  const rng1=hash2(id,1), rng2=hash2(id,2), rng3=hash2(id,3), rng4=hash2(id,4);
-  const w=52+rng1*84;
-  const x=WALL+6+rng2*(avail-w-12);
-  const icy=rng3<0.18;
-  const torch=!icy&&rng4<0.3;
+  const rng1=hash2(id,1),rng2=hash2(id,2),rng3=hash2(id,3),rng4=hash2(id,4);
+  const w=52+rng1*84, x=WALL+6+rng2*(avail-w-12);
+  const icy=rng3<0.18, torch=!icy&&rng4<0.3;
   s.plats.push({x,y:wy,w,h:14,icy,torch,id});
-
-  // Only process coins/hearts once per platform id
-  if(!(id in s.coinSeeds)){
-    // Coin placement
-    const rate=Math.min(upgVal('coinrate'),0.75);
-    const cr=hash2(id,5),cr2=hash2(id,6);
-    const count=cr<rate?(cr2<0.15?2:1):0;
-    s.coinSeeds[id]=count;
-    for(let i=0;i<count;i++){
-      const cx=hash2(id,7+i),cy=hash2(id,9+i);
-      s.coins.push({x:x+10+cx*(w-20),y:wy-20-cy*28,r:6,collected:false,bob:hash2(id,11+i)*Math.PI*2,id:id*10+i});
-    }
-    // Heart spawning — rare, uses separate hash slots so it never conflicts with coins
-    const hr=hash2(id,13);
-    if(hr<heartSpawnRate()){
-      const hx=x+10+hash2(id,14)*(w-20);
-      s.hearts.push({x:hx,y:wy-28,collected:false,bob:hash2(id,15)*Math.PI*2,id:'h'+id});
-    }
-  } else {
-    // Re-spawn coins for this platform if not yet collected (culled and came back on screen)
-    const count=s.coinSeeds[id];
-    for(let i=0;i<count;i++){
-      const cid=id*10+i;
-      if(s.coinSeeds[id]>=0&&!s.coins.some(c=>c.id===cid)){
-        const cx=hash2(id,7+i),cy=hash2(id,9+i);
-        s.coins.push({x:x+10+cx*(w-20),y:wy-20-cy*28,r:6,collected:false,bob:hash2(id,11+i)*Math.PI*2,id:cid});
-      }
-    }
-    // Re-spawn heart if not collected and not on screen
-    const hid='h'+id;
-    if(!s.collectedHearts.has(hid)&&!s.hearts.some(h=>h.id===hid)){
-      const hr=hash2(id,13);
-      if(hr<heartSpawnRate()){
-        const hx=x+10+hash2(id,14)*(w-20);
-        s.hearts.push({x:hx,y:wy-28,collected:false,bob:hash2(id,15)*Math.PI*2,id:hid});
-      }
-    }
-  }
 }
 
 function cull(s){
-  // SYMMETRIC margins: equal distance above and below camera
   const margin=H*0.75;
-  const t=s.cam-margin;
-  const b=s.cam+H+margin;
+  const t=s.cam-margin, b=s.cam+H+margin;
   s.plats=s.plats.filter(p=>p.y>t&&p.y<b);
   s.coins=s.coins.filter(c=>!c.collected&&c.y>t&&c.y<b);
   s.hearts=s.hearts.filter(h=>!h.collected&&h.y>t&&h.y<b);
@@ -396,9 +380,7 @@ function update(s){
     if(dist<mag*2.5&&dist>mag){coin.x+=dx/dist*3;coin.y+=dy/dist*3;}
     if(dist<mag){
       coin.collected=true;
-      // Mark collected in seeds so it won't respawn
-      const sid=coin.id/10|0;
-      s.coinSeeds[sid]=-Math.abs(s.coinSeeds[sid]||0)-1;
+      s.collectedCoins.add(coin.id);
       s.session_coins+=val;totalCoins+=val;
       addFloat(coin.x,coin.y-s.cam,val>1?'+'+val+' ⚜':'+⚜','#ffcc44');
     }
@@ -704,7 +686,9 @@ function drawBat(bt){
 
 function drawSling(){
   if(!drag) return;
-  const pl=S.pl,ps={x:pl.x,y:pl.y-S.cam};
+  const pl=S.pl;
+  const ps={x:pl.x,y:pl.y};  // world coords — sim runs in world space
+  const camY=S.cam;
   const dx=drag.sx-drag.cx,dy=drag.sy-drag.cy,dist=Math.sqrt(dx*dx+dy*dy);
   if(dist<4) return;
   const canFire=canLaunch();
@@ -718,11 +702,10 @@ function drawSling(){
   ctx.beginPath();ctx.moveTo(drag.sx,drag.sy);ctx.lineTo(drag.cx,drag.cy);ctx.stroke();
   ctx.setLineDash([]);ctx.restore();
 
-  // Arc preview
-  // base steps from preview upgrade: smaller base = shorter initial arc
-  const baseSteps=Math.floor(upgVal('preview')*4);
+  // Arc preview — 'preview' controls steps per segment, 'rebounds' controls bounce count (fully decoupled)
   const numBounces=maxRebounds();
-  const segs=simTrajectory(ps.x,ps.y,vx0,vy0,baseSteps*(numBounces+1),numBounces);
+  const stepsPerSeg=Math.floor(upgVal('preview')*5+20);
+  const segs=simTrajectory(ps.x,ps.y,vx0,vy0,stepsPerSeg,numBounces);
 
   ctx.globalAlpha=canFire?1:0.3;
   segs.forEach((seg,si)=>{
@@ -733,14 +716,15 @@ function drawSling(){
       const r=Math.max(0.8,3*(1-t*0.6));
       const alpha=(1-t*0.55)*(si===0?1:0.75);
       ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
-      ctx.beginPath();ctx.arc(d.x,d.y,r,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(d.x,d.y-camY,r,0,Math.PI*2);ctx.fill();
     });
     if(si<segs.length-1&&seg.dots.length>0){
       const last=seg.dots[seg.dots.length-1];
+      const lsy=last.y-camY;
       const nc=BOUNCE_COLORS[Math.min(si+1,BOUNCE_COLORS.length-1)];
       ctx.strokeStyle=`rgba(${nc[0]},${nc[1]},${nc[2]},0.9)`;ctx.lineWidth=1.5;
-      ctx.beginPath();ctx.moveTo(last.x-4,last.y-4);ctx.lineTo(last.x+4,last.y+4);ctx.stroke();
-      ctx.beginPath();ctx.moveTo(last.x+4,last.y-4);ctx.lineTo(last.x-4,last.y+4);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(last.x-4,lsy-4);ctx.lineTo(last.x+4,lsy+4);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(last.x+4,lsy-4);ctx.lineTo(last.x-4,lsy+4);ctx.stroke();
     }
   });
   ctx.globalAlpha=1;
