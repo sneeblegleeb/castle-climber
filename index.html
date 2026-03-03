@@ -767,7 +767,7 @@ function drawSling(){
 
   // Arc preview — 'preview' controls steps per segment, 'rebounds' controls bounce count (fully decoupled)
   const numBounces=maxRebounds();
-  const stepsPerSeg=Math.floor(upgVal('preview')*3+18);
+  const stepsPerSeg=Math.floor(upgVal('preview')*8);  // rank0=32 rank1=56 rank2=80 rank3=104
   const segs=simTrajectory(ps.x,ps.y,vx0,vy0,stepsPerSeg,numBounces);
 
   // Each segment only exists after a confirmed surface contact.
