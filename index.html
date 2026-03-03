@@ -744,14 +744,15 @@ function drawSling(){
   ctx.setLineDash([]);ctx.restore();
 
   // Wizard Sight controls total simulation steps — bounces appear naturally within the budget
-  const totalSteps=Math.floor(upgVal('preview')*8);  // rank0=32 rank1=56 rank2=80 rank3+=104
+  const totalSteps=Math.floor(upgVal('preview')*2.6);  // ~1/3 of previous
   const segs=simTrajectory(ps.x,ps.y,vx0,vy0,totalSteps);
 
   // Each segment only exists after a confirmed surface contact.
   // Per-segment fade 1→0; bounce marker only on seg.bounced (real surface hit).
+  const drawSegs=segs.slice(0,2);
   ctx.globalAlpha=canFire?1:0.3;
-  segs.forEach((seg,si)=>{
-    const col=BOUNCE_COLORS[Math.min(si,BOUNCE_COLORS.length-1)];
+  drawSegs.forEach((seg,si)=>{
+    const col=BOUNCE_COLORS[0];
     const n=seg.dots.length;
     seg.dots.forEach((d,di)=>{
       const t=di/Math.max(n-1,1);
@@ -762,10 +763,10 @@ function drawSling(){
       ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
       ctx.beginPath();ctx.arc(d.x,d.y-camY,r,0,Math.PI*2);ctx.fill();
     });
-    if(seg.bounced&&si<segs.length-1&&seg.dots.length>0){
+    if(seg.bounced&&si<drawSegs.length-1&&seg.dots.length>0){
       const last=seg.dots[seg.dots.length-1];
       const lsy=last.y-camY;
-      const nc=BOUNCE_COLORS[Math.min(si+1,BOUNCE_COLORS.length-1)];
+      const nc=BOUNCE_COLORS[0];
       ctx.strokeStyle=`rgba(${nc[0]},${nc[1]},${nc[2]},0.9)`;ctx.lineWidth=1.5;
       ctx.beginPath();ctx.moveTo(last.x-4,lsy-4);ctx.lineTo(last.x+4,lsy+4);ctx.stroke();
       ctx.beginPath();ctx.moveTo(last.x+4,lsy-4);ctx.lineTo(last.x-4,lsy+4);ctx.stroke();
