@@ -6,21 +6,24 @@
 <title>CASTLE CLIMBER</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:#0a0a1a; display:flex; justify-content:center; align-items:center; height:100vh; overflow:hidden; font-family:monospace; }
-canvas { display:block; image-rendering:pixelated; touch-action:none; }
-#ui { position:absolute; top:10px; left:50%; transform:translateX(-50%); color:#fff; text-align:center; pointer-events:none; letter-spacing:2px; }
+html,body { width:100%; height:100%; background:#0a0a1a; overflow:hidden; font-family:monospace; display:flex; justify-content:center; align-items:center; }
+#game-wrap { position:relative; background:#0a0a1a; overflow:hidden; }
+canvas { display:block; image-rendering:pixelated; touch-action:none; position:absolute; top:0; left:0; }
+#ui { position:absolute; top:10px; left:50%; transform:translateX(-50%); color:#fff; text-align:center; pointer-events:none; letter-spacing:2px; z-index:5; }
 #score { font-size:20px; color:#ffdd00; text-shadow:2px 2px #000; }
 #best { font-size:12px; color:#aaffaa; }
 #coindisp { font-size:13px; color:#ffcc00; margin-top:2px; }
 #hearts { font-size:18px; margin-top:3px; letter-spacing:3px; }
-#pausebtn {
-  position:absolute; top:10px; right:10px;
+#pausebtn, #fsbtn {
+  position:absolute; top:10px;
   background:rgba(0,0,0,0.6); border:2px solid #888;
   color:#fff; font-family:monospace; font-size:16px;
   width:36px; height:36px; cursor:pointer;
   display:flex; align-items:center; justify-content:center; z-index:10;
 }
-#pausebtn:hover { border-color:#ffdd00; }
+#pausebtn { right:10px; }
+#fsbtn { right:54px; font-size:14px; }
+#pausebtn:hover, #fsbtn:hover { border-color:#ffdd00; }
 .panel {
   position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
   background:rgba(10,8,5,0.96); border:4px solid #aa8833;
@@ -44,11 +47,12 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; }
 .panel-btns button { padding:8px 14px; background:#aa8833; border:2px solid #ffdd00; color:#000; font-size:11px; font-family:monospace; cursor:pointer; letter-spacing:1px; font-weight:bold; }
 .panel-btns button.danger { background:#882222; border-color:#ff6644; color:#fff; }
 .panel-btns button.wipe { background:#440000; border-color:#cc0000; color:#ff8888; font-size:10px; }
-#hint { position:absolute; bottom:28px; left:50%; transform:translateX(-50%); color:#887755; font-size:11px; text-align:center; width:280px; line-height:1.7; pointer-events:none; }
-#floatcanvas { position:absolute; top:0; left:0; pointer-events:none; }
+#hint { position:absolute; bottom:28px; left:50%; transform:translateX(-50%); color:#887755; font-size:11px; text-align:center; width:280px; line-height:1.7; pointer-events:none; z-index:5; }
+#floatcanvas { pointer-events:none; }
 </style>
 </head>
 <body>
+<div id="game-wrap">
 <canvas id="c"></canvas>
 <canvas id="floatcanvas"></canvas>
 <div id="ui">
@@ -57,6 +61,7 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; }
   <div id="coindisp">⚜ 0</div>
   <div id="hearts">❤️❤️❤️</div>
 </div>
+<button id="fsbtn" onclick="toggleFS()" title="Fullscreen">⛶</button>
 <button id="pausebtn" onclick="togglePause()">⏸</button>
 
 <div class="panel" id="go">
@@ -80,14 +85,37 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; }
 </div>
 
 <div id="hint">DRAG ANYWHERE TO AIM · RELEASE TO LAUNCH</div>
+</div><!-- #game-wrap -->
 
 <script>
 const C=document.getElementById('c'),ctx=C.getContext('2d');
 const FC=document.getElementById('floatcanvas'),fctx=FC.getContext('2d');
 const BW=360,BH=640;
-const SC=Math.min(innerWidth/BW,innerHeight/BH);
-[C,FC].forEach(cv=>{cv.width=BW;cv.height=BH;cv.style.width=BW*SC+'px';cv.style.height=BH*SC+'px';});
 const W=BW,H=BH,WALL=16;
+let SC=1;
+function resize(){
+  SC=Math.min(window.innerWidth/BW,window.innerHeight/BH);
+  const pw=Math.round(BW*SC)+'px',ph=Math.round(BH*SC)+'px';
+  const wrap=document.getElementById('game-wrap');
+  if(wrap){wrap.style.width=pw;wrap.style.height=ph;}
+  [C,FC].forEach(cv=>{cv.width=BW;cv.height=BH;cv.style.width=pw;cv.style.height=ph;});
+}
+resize();
+window.addEventListener('resize',resize);
+function toggleFS(){
+  const wrap=document.getElementById('game-wrap');
+  const fsEl=document.fullscreenElement||document.webkitFullscreenElement;
+  if(!fsEl){
+    const req=wrap.requestFullscreen||wrap.webkitRequestFullscreen||wrap.mozRequestFullScreen;
+    if(req) req.call(wrap).catch(()=>{});
+  } else {
+    const ex=document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen;
+    if(ex) ex.call(document);
+  }
+}
+['fullscreenchange','webkitfullscreenchange','mozfullscreenchange'].forEach(ev=>
+  document.addEventListener(ev,()=>setTimeout(resize,50))
+);
 const SAVE_KEY='castle_climber_save_v2';
 
 // ── Upgrades ─────────────────────────────────────────────────────────────────
@@ -514,7 +542,7 @@ function simTrajectory(sx,sy,vx0,vy0,stepsPerSeg,maxBounces){
       if(bounced) break;
     }
     segs.push({dots, full:!bounced, bi:seg});
-    if(!bounced||seg>=maxBounces) break;
+    if(seg>=maxBounces) break;
     bounces++;
   }
   return segs;
@@ -739,34 +767,36 @@ function drawSling(){
 
   // Arc preview — 'preview' controls steps per segment, 'rebounds' controls bounce count (fully decoupled)
   const numBounces=maxRebounds();
-  const stepsPerSeg=Math.floor(upgVal('preview')*2.5+10);
+  const stepsPerSeg=Math.floor(upgVal('preview')*0.6+3);
   const segs=simTrajectory(ps.x,ps.y,vx0,vy0,stepsPerSeg,numBounces);
 
+  // Global fade: t runs 0→1 across ALL segments combined so opacity is smooth
+  // across bounces and doesn't reset at each segment boundary.
+  const totalDots=segs.reduce((a,seg)=>a+seg.dots.length,0);
+  let gdi=0;
   ctx.globalAlpha=canFire?1:0.3;
   segs.forEach((seg,si)=>{
     const col=BOUNCE_COLORS[Math.min(si,BOUNCE_COLORS.length-1)];
-    const n=seg.dots.length;
-    // If the segment used its full budget (arc didn't reach a bounce), it fades out
-    // naturally — the player's preview didn't extend far enough to show the bounce.
-    // If it bounced early, it shows up to the bounce point then stops cleanly.
-    seg.dots.forEach((d,di)=>{
-      const t=di/Math.max(n-1,1);
-      // Fade logic: full segments fade to 0 at the end (preview budget ran out).
-      // Bounced segments keep opacity until near the bounce point.
-      const fade=seg.full?(1-t*t):Math.max(0,1-t*1.1);
-      const r=Math.max(0.8,3*(1-t*0.5));
-      const alpha=fade*(si===0?1:0.8);
+    seg.dots.forEach((d)=>{
+      const gt=gdi/Math.max(totalDots-1,1);
+      const fade=1-gt*gt;
+      const r=Math.max(0.8,3*(1-gt*0.6));
+      const alpha=fade*(si===0?1:0.85);
+      gdi++;
       if(alpha<0.02) return;
       ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
       ctx.beginPath();ctx.arc(d.x,d.y-camY,r,0,Math.PI*2);ctx.fill();
     });
-    // Draw bounce marker only when this segment ended with a real bounce
-    // (i.e. the next segment exists and this one wasn't just fading out)
-    if(!seg.full&&si<segs.length-1&&seg.dots.length>0){
+    // Always draw bounce marker between segments — regardless of whether the
+    // previous arc hit a surface. This ensures rebound preview always appears
+    // when the 'rebounds' upgrade is active, even if the arc ran out of steps.
+    if(si<segs.length-1&&seg.dots.length>0){
       const last=seg.dots[seg.dots.length-1];
       const lsy=last.y-camY;
+      const gt=(gdi-1)/Math.max(totalDots-1,1);
+      const markerA=(1-gt)*0.9;
       const nc=BOUNCE_COLORS[Math.min(si+1,BOUNCE_COLORS.length-1)];
-      ctx.strokeStyle=`rgba(${nc[0]},${nc[1]},${nc[2]},0.9)`;ctx.lineWidth=1.5;
+      ctx.strokeStyle=`rgba(${nc[0]},${nc[1]},${nc[2]},${markerA})`;ctx.lineWidth=1.5;
       ctx.beginPath();ctx.moveTo(last.x-4,lsy-4);ctx.lineTo(last.x+4,lsy+4);ctx.stroke();
       ctx.beginPath();ctx.moveTo(last.x+4,lsy-4);ctx.lineTo(last.x-4,lsy+4);ctx.stroke();
     }
