@@ -463,24 +463,59 @@ function up(){
 // ── Trajectory simulation ─────────────────────────────────────────────────────
 const BOUNCE_COLORS=[[255,200,80],[80,200,255],[180,80,255],[80,255,120],[255,140,40]];
 
-function simTrajectory(sx,sy,vx0,vy0,maxSteps,maxBounces){
+function simTrajectory(sx,sy,vx0,vy0,stepsPerSeg,maxBounces){
   const grav=upgVal('gravity'),ab=airbrakeVal(),bc=upgVal('bounce'),pf=frictionVal();
+  const hw=9,hh=12; // player half-width, half-height (matches physics)
   let tx=sx,ty=sy,tvx=vx0,tvy=vy0,bounces=0;
-  const segs=[{dots:[],bi:0}];
-  for(let i=0;i<maxSteps&&bounces<=maxBounces;i++){
-    tvy+=grav;tvx*=ab;tx+=tvx;ty+=tvy;
-    let hit=false;
-    if(tx<=WALL+1){tx=WALL+1;tvx=Math.abs(tvx)*bc;bounces++;hit=true;}
-    else if(tx>=W-WALL-1){tx=W-WALL-1;tvx=-Math.abs(tvx)*bc;bounces++;hit=true;}
-    if(!hit&&tvy>0){
-      for(const p of S.plats){
-        if(tx+9>p.x&&tx-9<p.x+p.w&&ty>=p.y-2&&ty<=p.y+4){
-          ty=p.y-1;tvy=-Math.abs(tvy)*0.5;tvx*=pf;bounces++;hit=true;break;
+  const segs=[];
+
+  // Simulate one segment at a time — each gets its own stepsPerSeg budget.
+  // A segment ends when it bounces OR exhausts its step budget.
+  // 'full' = used full budget without bouncing (arc was long enough to connect to next).
+  for(let seg=0;seg<=maxBounces;seg++){
+    const dots=[];
+    let bounced=false;
+    for(let i=0;i<stepsPerSeg;i++){
+      const ptx=tx,pty=ty; // previous position for AABB sweep
+      tvy+=grav;tvx*=ab;tx+=tvx;ty+=tvy;
+
+      // Wall collisions
+      if(tx-hw<=WALL){tx=WALL+hw;tvx=Math.abs(tvx)*bc;bounced=true;}
+      else if(tx+hw>=W-WALL){tx=W-WALL-hw;tvx=-Math.abs(tvx)*bc;bounced=true;}
+
+      // Platform collisions — check all 4 sides like the physics engine does
+      if(!bounced){
+        for(const p of S.plats){
+          const pR=p.x+p.w, pB=p.y+p.h;
+          // Current AABB overlap
+          if(tx+hw<=p.x||tx-hw>=pR||ty+hh<=p.y||ty-hh>=pB) continue;
+          // Determine approach side using previous position
+          const fromTop =(pty+hh)<=p.y;
+          const fromBot =(pty-hh)>=pB;
+          const fromLeft=(ptx+hw)<=p.x;
+          const fromRight=(ptx-hw)>=pR;
+          if(fromTop){
+            ty=p.y-hh; tvy=-Math.abs(tvy)*0.5; tvx*=pf; bounced=true;
+          } else if(fromBot){
+            ty=pB+hh; tvy=Math.abs(tvy)*0.3; bounced=true;
+          } else if(fromLeft){
+            tx=p.x-hw; tvx=-Math.abs(tvx)*bc; bounced=true;
+          } else if(fromRight){
+            tx=pR+hw; tvx=Math.abs(tvx)*bc; bounced=true;
+          } else {
+            // Tunnelled — resolve to top as best guess
+            ty=p.y-hh; tvy=-Math.abs(tvy)*0.5; tvx*=pf; bounced=true;
+          }
+          break;
         }
       }
+
+      dots.push({x:tx,y:ty});
+      if(bounced) break;
     }
-    segs[segs.length-1].dots.push({x:tx,y:ty});
-    if(hit&&bounces<=maxBounces) segs.push({dots:[{x:tx,y:ty}],bi:bounces});
+    segs.push({dots, full:!bounced, bi:seg});
+    if(!bounced||seg>=maxBounces) break;
+    bounces++;
   }
   return segs;
 }
@@ -711,14 +746,23 @@ function drawSling(){
   segs.forEach((seg,si)=>{
     const col=BOUNCE_COLORS[Math.min(si,BOUNCE_COLORS.length-1)];
     const n=seg.dots.length;
+    // If the segment used its full budget (arc didn't reach a bounce), it fades out
+    // naturally — the player's preview didn't extend far enough to show the bounce.
+    // If it bounced early, it shows up to the bounce point then stops cleanly.
     seg.dots.forEach((d,di)=>{
       const t=di/Math.max(n-1,1);
-      const r=Math.max(0.8,3*(1-t*0.6));
-      const alpha=(1-t*0.55)*(si===0?1:0.75);
+      // Fade logic: full segments fade to 0 at the end (preview budget ran out).
+      // Bounced segments keep opacity until near the bounce point.
+      const fade=seg.full?(1-t*t):Math.max(0,1-t*1.1);
+      const r=Math.max(0.8,3*(1-t*0.5));
+      const alpha=fade*(si===0?1:0.8);
+      if(alpha<0.02) return;
       ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
       ctx.beginPath();ctx.arc(d.x,d.y-camY,r,0,Math.PI*2);ctx.fill();
     });
-    if(si<segs.length-1&&seg.dots.length>0){
+    // Draw bounce marker only when this segment ended with a real bounce
+    // (i.e. the next segment exists and this one wasn't just fading out)
+    if(!seg.full&&si<segs.length-1&&seg.dots.length>0){
       const last=seg.dots[seg.dots.length-1];
       const lsy=last.y-camY;
       const nc=BOUNCE_COLORS[Math.min(si+1,BOUNCE_COLORS.length-1)];
