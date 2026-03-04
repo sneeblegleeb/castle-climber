@@ -85,7 +85,7 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 </div>
 
 <div id="hint">DRAG ANYWHERE TO AIM · RELEASE TO LAUNCH</div>
-</div>
+</div><!-- #game-wrap -->
 
 <script>
 const C=document.getElementById('c'),ctx=C.getContext('2d');
@@ -105,28 +105,36 @@ window.addEventListener('resize',resize);
 function toggleFS(){
   const wrap=document.getElementById('game-wrap');
   const fsEl=document.fullscreenElement||document.webkitFullscreenElement;
-  if(!fsEl){const req=wrap.requestFullscreen||wrap.webkitRequestFullscreen||wrap.mozRequestFullScreen;if(req)req.call(wrap).catch(()=>{});}
-  else{const ex=document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen;if(ex)ex.call(document);}
+  if(!fsEl){
+    const req=wrap.requestFullscreen||wrap.webkitRequestFullscreen||wrap.mozRequestFullScreen;
+    if(req) req.call(wrap).catch(()=>{});
+  } else {
+    const ex=document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen;
+    if(ex) ex.call(document);
+  }
 }
-['fullscreenchange','webkitfullscreenchange','mozfullscreenchange'].forEach(ev=>document.addEventListener(ev,()=>setTimeout(resize,50)));
+['fullscreenchange','webkitfullscreenchange','mozfullscreenchange'].forEach(ev=>
+  document.addEventListener(ev,()=>setTimeout(resize,50))
+);
 const SAVE_KEY='castle_climber_save_v2';
 
+// ── Upgrades ─────────────────────────────────────────────────────────────────
 const UPGRADES=[
-  {id:'power',    name:'TREBUCHET ARM',    desc:'Mightier launch force',                  icon:'⚔', base:15,  inc:0.9,   baseCost:60,  costMult:1.55},
-  {id:'preview',  name:'WIZARD SIGHT',     desc:'Longer trajectory preview arc',          icon:'🔮',base:4,   inc:3,     baseCost:40,  costMult:1.4},
-  {id:'friction', name:'IRON SABATONS',    desc:'Better grip upon the stonework',         icon:'🛡', base:0.82,inc:-0.04, baseCost:50,  costMult:1.5},
-  {id:'gravity',  name:'FEATHERFALL RUNE', desc:'Enchantment lightens thy burden',        icon:'✨',base:0.42,inc:-0.02, baseCost:80,  costMult:1.6},
-  {id:'bounce',   name:'RUNED GAUNTLETS',  desc:'Rebound harder off castle walls',        icon:'💎',base:0.6, inc:0.08,  baseCost:40,  costMult:1.4},
-  {id:'coinmag',  name:'GILDED AURA',      desc:'Gold is drawn to thee from afar',        icon:'⚜', base:14,  inc:6,     baseCost:30,  costMult:1.35},
+  {id:'power',    name:'TREBUCHET ARM',    desc:'Mightier launch force',                 icon:'⚔', base:15,  inc:0.9,   baseCost:60,  costMult:1.55},
+  {id:'preview',  name:'WIZARD SIGHT',     desc:'Longer trajectory preview arc',         icon:'🔮',base:4,   inc:3,     baseCost:40,  costMult:1.4},
+  {id:'friction', name:'IRON SABATONS',    desc:'Better grip upon the stonework',        icon:'🛡', base:0.82,inc:-0.04, baseCost:50,  costMult:1.5},
+  {id:'gravity',  name:'FEATHERFALL RUNE', desc:'Enchantment lightens thy burden',       icon:'✨',base:0.42,inc:-0.02, baseCost:80,  costMult:1.6},
+  {id:'bounce',   name:'RUNED GAUNTLETS',  desc:'Rebound harder off castle walls',       icon:'💎',base:0.6, inc:0.08,  baseCost:40,  costMult:1.4},
+  {id:'coinmag',  name:'GILDED AURA',      desc:'Gold is drawn to thee from afar',       icon:'⚜', base:14,  inc:6,     baseCost:30,  costMult:1.35},
   {id:'coinrate', name:'FORTUNE BLESSING', desc:'More gold coins float through the castle',icon:'🪙',base:1.0, inc:0.4,   baseCost:50,  costMult:1.45},
-  {id:'coyote',   name:"SQUIRE'S GRACE",   desc:'Extra moments to leap from ledges',      icon:'🐾',base:0,   inc:4,     baseCost:60,  costMult:1.5},
-  {id:'airbrake', name:'CAPE OF CONTROL',  desc:'Thy cloak steadies thine arc',           icon:'🧣',base:1.0, inc:-0.03, baseCost:40,  costMult:1.4},
-  {id:'coinval',  name:'ROYAL TITHE',      desc:"Each coin bears the king's bounty",      icon:'👑',base:1,   inc:1,     baseCost:100, costMult:1.7},
-  {id:'maxhp',    name:'VITALITY OATH',    desc:'Gain an extra heart of health',          icon:'❤️',base:3,   inc:1,     baseCost:80,  costMult:1.8},
-  {id:'fallres',  name:'IRONFLESH WARD',   desc:'Reduces fall damage taken',              icon:'🪨',base:0,   inc:0.15,  baseCost:55,  costMult:1.5},
-  {id:'airjumps', name:'WINGED BOOTS',     desc:'Extra mid-air launches per flight',      icon:'🦅',base:0,   inc:1,     baseCost:120, costMult:1.9},
+  {id:'coyote',   name:"SQUIRE'S GRACE",   desc:'Extra moments to leap from ledges',     icon:'🐾',base:0,   inc:4,     baseCost:60,  costMult:1.5},
+  {id:'airbrake', name:'CAPE OF CONTROL',  desc:'Thy cloak steadies thine arc',          icon:'🧣',base:1.0, inc:-0.03, baseCost:40,  costMult:1.4},
+  {id:'coinval',  name:'ROYAL TITHE',      desc:"Each coin bears the king's bounty",     icon:'👑',base:1,   inc:1,     baseCost:100, costMult:1.7},
+  {id:'maxhp',    name:'VITALITY OATH',    desc:'Gain an extra heart of health',         icon:'❤️',base:3,   inc:1,     baseCost:80,  costMult:1.8},
+  {id:'fallres',  name:'IRONFLESH WARD',   desc:'Reduces fall damage taken',             icon:'🪨',base:0,   inc:0.15,  baseCost:55,  costMult:1.5},
+  {id:'airjumps', name:'WINGED BOOTS',     desc:'Extra mid-air launches per flight',     icon:'🦅',base:0,   inc:1,     baseCost:120, costMult:1.9},
   {id:'batradius',name:'WARDING SIGIL',    desc:'Bats cannot agro within a wider radius', icon:'🔯',base:80,  inc:25,    baseCost:45,  costMult:1.45},
-  {id:'heartrate',name:'BLESSED GROUNDS',  desc:'Hearts of healing appear more often',    icon:'💖',base:0.04,inc:0.025, baseCost:60,  costMult:1.55},
+  {id:'heartrate',name:'BLESSED GROUNDS',  desc:'Hearts of healing appear more often',   icon:'💖',base:0.04,inc:0.025, baseCost:60,  costMult:1.55},
 ];
 
 let upgLevels={};
@@ -137,29 +145,37 @@ function upgVal(id){const u=UPGRADES.find(x=>x.id===id);return u.base+upgLevels[
 function upgCost(id){const u=UPGRADES.find(x=>x.id===id);return Math.ceil(u.baseCost*Math.pow(u.costMult,upgLevels[id]));}
 function maxHP(){return upgVal('maxhp')|0;}
 function maxAirJumps(){return upgVal('airjumps')|0;}
-function frictionVal(){return Math.max(0.05,upgVal('friction'));}
-function airbrakeVal(){return Math.max(0.05,upgVal('airbrake'));}
-function batAgroRadius(){return Math.min(upgVal('batradius'),H*0.45);}
+// Clamp upgrades that degrade — prevents them going negative at high levels
+function frictionVal(){return Math.max(0.05, upgVal('friction'));}
+function airbrakeVal(){return Math.max(0.05, upgVal('airbrake'));}
+// Bat agro minimum distance — capped at 90% of half-screen so it can never cover full screen
+function batAgroRadius(){return Math.min(upgVal('batradius'), H*0.45);}
 function heartSpawnRate(){return upgVal('heartrate');}
-
-// ── Difficulty scaling ────────────────────────────────────────────────────────
-// Returns 0 at start, ramps smoothly to 1 at |worldY|=5000+
-function diffFactor(worldY){
-  const d=Math.max(0,Math.abs(worldY)-800); // safe zone: first 800 units
-  return Math.min(1, d/4200);
-}
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 function saveGame(s){
-  try{localStorage.setItem(SAVE_KEY,JSON.stringify({upgLevels,totalCoins,best,lowest,pos:s?{x:s.pl.x,y:s.pl.y,hp:s.pl.hp}:null}));}catch(e){}
+  try{
+    localStorage.setItem(SAVE_KEY,JSON.stringify({
+      upgLevels,totalCoins,best,lowest,
+      pos:s?{x:s.pl.x,y:s.pl.y,hp:s.pl.hp}:null
+    }));
+  }catch(e){}
 }
 function loadSave(){try{const r=localStorage.getItem(SAVE_KEY);return r?JSON.parse(r):null;}catch(e){return null;}}
-function wipeSave(){localStorage.removeItem(SAVE_KEY);upgLevels={};UPGRADES.forEach(u=>upgLevels[u.id]=0);totalCoins=0;best=0;lowest=0;}
+function wipeSave(){
+  localStorage.removeItem(SAVE_KEY);
+  upgLevels={};UPGRADES.forEach(u=>upgLevels[u.id]=0);
+  totalCoins=0;best=0;lowest=0;
+}
 function confirmWipe(){if(confirm('Wipe all progress? This cannot be undone.')){wipeSave();restart();}}
 
+// ── State ─────────────────────────────────────────────────────────────────────
 let S,drag=null,floats=[],paused=false,saveTimer=0;
 
+// Deterministic hash for a world-Y band — used for consistent brick shading
+// and to decide whether a platform row gets a crack, without re-rolling on cull/regen.
 function hashY(y){let h=Math.sin(y*127.1+311.7)*43758.5453;return h-Math.floor(h);}
+// Hash that takes two inputs (for per-column, per-row decisions)
 function hash2(a,b){let h=Math.sin(a*127.1+b*311.7+92.3)*43758.5453;return h-Math.floor(h);}
 
 function mkS(savedPos){
@@ -168,53 +184,77 @@ function mkS(savedPos){
   const shp=savedPos?Math.min(savedPos.hp,hp):hp;
   const s={
     pl:{x:sx,y:sy,vx:0,vy:0,w:18,h:24,onG:false,coyote:0,
-        hp:shp,maxHp:hp,hurtTimer:0,fallVy:0,damageFlash:0,airJumpsLeft:maxAirJumps()},
-    cam:sy-H*.38,plats:[],coins:[],
-    collectedCoins:new Set(),collectedHearts:new Set(),
-    score:Math.floor(-sy/10),session_coins:0,alive:true,tick:0,
-    bats:[],hearts:[],archers:[],arrows:[],
+        hp:shp,maxHp:hp,hurtTimer:0,fallVy:0,damageFlash:0,
+        airJumpsLeft:maxAirJumps()},
+    cam:sy-H*.38,
+    plats:[],coins:[],
+    // Independent pickup spawner cursors
+    collectedCoins:new Set(),
+    collectedHearts:new Set(),
+    score:Math.floor(-sy/10),session_coins:0,
+    alive:true,tick:0,
+    bats:[],
+    hearts:[], // healing hearts
+    archers:[], // skeleton archers
+    arrows:[],  // active arrow projectiles
   };
-  s.plats.push({x:sx-55,y:sy+55,w:110,h:14,icy:false,torch:false,id:0,spikes:[]});
-  for(let i=0;i<8;i++) s.bats.push(mkBat(sy+(Math.random()-.5)*H*3,sy));
+  s.plats.push({x:sx-55,y:sy+55,w:110,h:14,icy:false,torch:false,id:0});
+  for(let i=0;i<8;i++) s.bats.push(mkBat(sy+(Math.random()-.5)*H*3, sy));
   gen(s);
   return s;
 }
 
 function mkBat(wy,plY){
+  // Ensure bat spawns at least batAgroRadius away from player world-Y
   const minDist=batAgroRadius()+50;
-  if(plY!==undefined&&Math.abs(wy-plY)<minDist) wy=wy<plY?plY-minDist:plY+minDist;
+  if(plY!==undefined&&Math.abs(wy-plY)<minDist){
+    wy = wy<plY ? plY-minDist : plY+minDist;
+  }
   return{x:WALL+10+Math.random()*(W-WALL*2-20),wy,vx:(Math.random()-.5)*1.0,
-    flap:Math.random()*Math.PI*2,state:'idle',agroTimer:0,retreatTimer:0,dvx:0,dvy:0,hurtTimer:0};
+    flap:Math.random()*Math.PI*2,state:'idle',agroTimer:0,retreatTimer:0,
+    tx:0,ty:0,dvx:0,dvy:0,hurtTimer:0};
 }
 
-function platId(wy){return Math.round(wy/10)||0;}
+// Each platform gets a stable integer ID derived from its world-Y position.
+// This ID is used to seed coin placement so that re-generating a culled platform
+// does NOT re-roll a new coin — it reuses the same deterministic result.
+function platId(wy){
+  // Math.round(-4.9) = -5, Math.round(4.9) = 5. Add 0 to normalize -0 to 0.
+  return Math.round(wy/10)||0;
+}
 
 function gen(s){
-  const margin=H*0.75,top=s.cam-margin,bot=s.cam+H+margin;
+  const margin=H*0.75;
+  const top=s.cam-margin, bot=s.cam+H+margin;
+
+  // Platforms
   let mn=Infinity,mx=-Infinity;
   for(const p of s.plats){if(p.y<mn)mn=p.y;if(p.y>mx)mx=p.y;}
   if(!s.plats.length){mn=s.pl.y;mx=s.pl.y;}
   let y=mx; while(y<bot){y+=65+Math.random()*85;if(y<bot)addP(s,y);}
   y=mn;     while(y>top){y-=65+Math.random()*85;if(y>top)addP(s,y);}
 
-  const COIN_BAND=80,HEART_BAND=320;
-  const cb0=Math.floor(top/COIN_BAND),cb1=Math.ceil(bot/COIN_BAND);
+  // Deterministic band-based pickup spawning.
+  // World is divided into fixed-size bands. Every gen() call scans all bands
+  // in the current window and ensures each one has its coin/heart if it should.
+  // Fully stateless — works in any direction, on revisit, and after reload.
+  const COIN_BAND=80, HEART_BAND=320;
+  const cb0=Math.floor(top/COIN_BAND), cb1=Math.ceil(bot/COIN_BAND);
   for(let b=cb0;b<=cb1;b++) tryPlaceCoin(s,b*COIN_BAND,b);
-  const hb0=Math.floor(top/HEART_BAND),hb1=Math.ceil(bot/HEART_BAND);
+  const hb0=Math.floor(top/HEART_BAND), hb1=Math.ceil(bot/HEART_BAND);
   for(let b=hb0;b<=hb1;b++) tryPlaceHeart(s,b*HEART_BAND,b);
 
+  // Bat top-up (idle only)
   const idle=s.bats.filter(bt=>bt.state==='idle').length;
   let add=8-idle; while(add-->0) s.bats.push(mkBat(s.cam+(Math.random()-.5)*H*2,s.pl.y));
-
-  // Archers scale with difficulty — max 6, only spawn once diff > ~0.1
-  const df=diffFactor(s.pl.y);
-  const maxArchers=Math.floor(df*6); // 0 at start → 6 at max depth
-  if(s.archers.length<maxArchers){
-    const need=maxArchers-s.archers.length;
+  // Spawn archers when far from start, max 6 on screen
+  if(Math.abs(s.pl.y)>500&&s.archers.length<6){
+    const need=6-s.archers.length;
     for(let i=0;i<need;i++) s.archers.push(mkArcher(s.cam,s.pl.y));
   }
 }
 
+// True if world-point (wx,wy) with radius r overlaps any platform AABB
 function platOverlap(s,wx,wy,r){
   for(const p of s.plats)
     if(wx+r>p.x&&wx-r<p.x+p.w&&wy+r>p.y-2&&wy-r<p.y+p.h+2) return true;
@@ -222,12 +262,13 @@ function platOverlap(s,wx,wy,r){
 }
 
 function tryPlaceCoin(s,wy,band){
+  // Deterministic roll — each band either has a coin or doesn't, same every visit
   const spawnChance=Math.min(0.9,0.3+upgVal('coinrate')*0.18);
   if(hash2(band,42)>spawnChance) return;
   if(s.collectedCoins.has(band)) return;
   if(s.coins.some(c=>c.id===band)) return;
   const wx=WALL+14+hash2(band,40)*(W-WALL*2-28);
-  let cy=wy+hash2(band,43)*30-15;
+  let cy=wy+hash2(band,43)*30-15;  // slight vertical scatter within band
   for(let i=0;i<8;i++){if(!platOverlap(s,wx,cy,9))break;cy-=12;}
   s.coins.push({x:wx,y:cy,collected:false,bob:hash2(band,41)*Math.PI*2,id:band});
 }
@@ -248,18 +289,16 @@ function addP(s,wy){
   if(s.plats.some(p=>p.id===id)) return;
   const avail=W-WALL*2;
   const rng1=hash2(id,1),rng2=hash2(id,2),rng3=hash2(id,3),rng4=hash2(id,4);
-  const w=52+rng1*84,x=WALL+6+rng2*(avail-w-12);
-  const icy=rng3<0.18,torch=!icy&&rng4<0.3;
-  // Spikes: difficulty-gated — none in safe zone, ramping up to ~35% of platforms at max depth
-  const df=diffFactor(wy);
-  const spikeRoll=hash2(id,88);
-  const spikeThresh=df*0.35; // 0% → 35%
-  const spikeData=spikeRoll<spikeThresh?genSpikes(x,w,id,df):[];
+  const w=52+rng1*84, x=WALL+6+rng2*(avail-w-12);
+  const icy=rng3<0.18, torch=!icy&&rng4<0.3;
+  // Spikes appear on platforms after |worldY|>300
+  const spikeData=Math.abs(wy)>300?genSpikes(x,w,id):[];
   s.plats.push({x,y:wy,w,h:14,icy,torch,id,spikes:spikeData});
 }
 
 function cull(s){
-  const margin=H*0.75,t=s.cam-margin,b=s.cam+H+margin;
+  const margin=H*0.75;
+  const t=s.cam-margin, b=s.cam+H+margin;
   s.plats=s.plats.filter(p=>p.y>t&&p.y<b);
   s.coins=s.coins.filter(c=>!c.collected&&c.y>t&&c.y<b);
   s.hearts=s.hearts.filter(h=>!h.collected&&h.y>t&&h.y<b);
@@ -270,25 +309,31 @@ function cull(s){
 
 function addFloat(x,sy,text,color){floats.push({x,y:sy,vy:-1.4,life:55,text,color:color||'#ffdd00'});}
 
-const FALL_THRESH=16,FALL_SEVERE=25;
+// Fall damage thresholds — bumped up as requested
+const FALL_THRESH=16;   // was 10
+const FALL_SEVERE=25;   // was 16
 
 // ── Bats ──────────────────────────────────────────────────────────────────────
 const BAT_AGRO_RATE=0.04,BAT_AGRO_PERIOD=240,BAT_DIVE_SPEED=5,BAT_IDLE_SPEED=0.8;
+
 function updateBats(s){
   const pl=s.pl;
   for(const bt of s.bats){
     bt.flap+=0.14;
     if(bt.hurtTimer>0) bt.hurtTimer--;
     if(bt.state==='idle'){
-      bt.x+=bt.vx;bt.wy+=Math.sin(bt.flap*0.25)*0.3;
+      bt.x+=bt.vx;
+      bt.wy+=Math.sin(bt.flap*0.25)*0.3;
       if(bt.x<WALL+8||bt.x>W-WALL-8) bt.vx*=-1;
       bt.vx=Math.max(-BAT_IDLE_SPEED,Math.min(BAT_IDLE_SPEED,bt.vx));
-      const bsy=bt.wy-s.cam,dist=Math.sqrt((bt.x-pl.x)**2+(bt.wy-pl.y)**2);
-      if(bsy>-50&&bsy<H+50&&!paused&&dist>batAgroRadius()&&s.tick%BAT_AGRO_PERIOD===0&&Math.random()<BAT_AGRO_RATE){
+      const bsy=bt.wy-s.cam;
+      const distToPlayer=Math.sqrt((bt.x-pl.x)**2+(bt.wy-pl.y)**2);
+      if(bsy>-50&&bsy<H+50&&!paused&&distToPlayer>batAgroRadius()&&s.tick%BAT_AGRO_PERIOD===0&&Math.random()<BAT_AGRO_RATE){
         bt.state='agro';bt.agroTimer=90+Math.random()*60;
       }
     } else if(bt.state==='agro'){
-      bt.flap+=0.06;bt.x+=bt.vx*1.2;bt.wy+=(pl.y-bt.wy)*0.008;
+      bt.flap+=0.06;bt.x+=bt.vx*1.2;
+      bt.wy+=(pl.y-bt.wy)*0.008;
       if(bt.x<WALL+8||bt.x>W-WALL-8) bt.vx*=-1;
       if(--bt.agroTimer<=0){
         bt.state='diving';
@@ -298,9 +343,14 @@ function updateBats(s){
     } else if(bt.state==='diving'){
       bt.x+=bt.dvx;bt.wy+=bt.dvy;
       const dx=pl.x-bt.x,dy=pl.y-bt.wy;
-      if(Math.sqrt(dx*dx+dy*dy)<20){takeDamage(s,1,'🦇 HIT!');bt.state='retreating';bt.retreatTimer=100;bt.dvx*=-0.7;bt.dvy=-3;bt.hurtTimer=20;}
+      if(Math.sqrt(dx*dx+dy*dy)<20){
+        takeDamage(s,1,'🦇 HIT!');
+        bt.state='retreating';bt.retreatTimer=100;bt.dvx*=-0.7;bt.dvy=-3;bt.hurtTimer=20;
+      }
       const bsy=bt.wy-s.cam;
-      if(bsy<-H||bsy>H*2||bt.x<WALL||bt.x>W-WALL){bt.state='retreating';bt.retreatTimer=80;bt.dvx*=-0.5;bt.dvy=-2;}
+      if(bsy<-H||bsy>H*2||bt.x<WALL||bt.x>W-WALL){
+        bt.state='retreating';bt.retreatTimer=80;bt.dvx*=-0.5;bt.dvy=-2;
+      }
     } else if(bt.state==='retreating'){
       bt.x+=bt.dvx*0.88;bt.wy+=bt.dvy;bt.dvx*=0.9;bt.dvy*=0.88;
       if(--bt.retreatTimer<=0){bt.state='idle';bt.vx=(Math.random()-.5)*BAT_IDLE_SPEED*2;}
@@ -309,62 +359,62 @@ function updateBats(s){
 }
 
 // ── Spikes ────────────────────────────────────────────────────────────────────
-function genSpikes(px,pw,id,df){
+function genSpikes(px,pw,id){
+  // Deterministic spike clusters per platform
   const spikes=[];
-  // At low difficulty: 1 small cluster. At high: up to 3 clusters.
-  const maxClusters=1+Math.floor(df*2.5);
-  const count=1+Math.floor(hash2(id,77)*(maxClusters-0.01));
+  const count=Math.floor(hash2(id,77)*3); // 0-2 clusters
   for(let c=0;c<count;c++){
-    const cx=px+10+hash2(id,c+100)*(pw-20);
-    const n=2+Math.floor(hash2(id,c+200)*(df>0.5?2:1)); // more spikes per cluster deeper in
-    for(let i=0;i<n;i++) spikes.push({x:cx+(i-(n-1)/2)*7});
+    const cx=px+8+hash2(id,c+100)*(pw-16);
+    // 2-3 spikes per cluster
+    const n=2+Math.floor(hash2(id,c+200)*2);
+    for(let i=0;i<n;i++){
+      spikes.push({x:cx+(i-(n-1)/2)*7});
+    }
   }
   return spikes;
 }
 
 function checkSpikes(s){
   if(s.pl.hurtTimer>0) return;
-  const pl=s.pl,plL=pl.x-pl.w/2,plR=pl.x+pl.w/2,plB=pl.y+pl.h/2;
+  const pl=s.pl;
+  const plL=pl.x-pl.w/2,plR=pl.x+pl.w/2,plB=pl.y+pl.h/2;
   for(const p of s.plats){
     if(!p.spikes||!p.spikes.length) continue;
-    const sy=p.y;
-    if(plB<sy-8||plB>sy+4) continue;
+    const sy=p.y; // spike tips sit on top of platform
+    if(plB<sy-8||plB>sy+4) continue; // only near platform top
     for(const sp of p.spikes){
       if(plR>sp.x-3&&plL<sp.x+3){
-        takeDamage(s,1,'🩸 SPIKE!');pl.vx=(pl.x<sp.x?-1:1)*4;pl.vy=-3;return;
+        takeDamage(s,1,'🩸 SPIKE!');
+        // Bounce player sideways away from spike
+        pl.vx=(pl.x<sp.x?-1:1)*4;
+        pl.vy=-3;
+        return;
       }
     }
   }
 }
 
 // ── Skeleton Archers ──────────────────────────────────────────────────────────
-const ARCHER_SHOOT_INTERVAL=300;
+const ARCHER_SHOOT_INTERVAL=300; // ticks (~5 sec at 60fps)
 const ARROW_SPEED=4.5;
 
 function mkArcher(cam,plY){
+  // Place in left or right wall, or embed in background
   const side=Math.random()<0.5?'left':'right';
-  // Perch: a small stone ledge jutting from the wall
-  const x=side==='left'?WALL+2:W-WALL-2;
+  const x=side==='left'?WALL-4:W-WALL+4;
   const wy=cam+(Math.random()-0.3)*H*1.5;
-  return{x,wy,side,shootTimer:Math.floor(Math.random()*ARCHER_SHOOT_INTERVAL),frame:0,alive:true};
+  return{x,wy,side,shootTimer:Math.floor(Math.random()*ARCHER_SHOOT_INTERVAL),
+    frame:0,alive:true};
 }
 
-function hasLOS(s,ax,awy,px,py,side){
-  // 180-degree FOV: archer faces inward (left archer faces right, right faces left).
-  // Player must be on the correct side horizontally (or directly above/below).
-  // "directly above/below" = within a generous horizontal band so vertical shots work.
-  const facingRight=side==='left';
-  const dx=px-ax;
-  // Allow shots if player is in the forward hemisphere OR within ±20px horizontally
-  // (so the archer can shoot straight up/down when player is almost directly above).
-  if(facingRight&&dx<-20) return false;   // player is behind left-wall archer
-  if(!facingRight&&dx>20) return false;   // player is behind right-wall archer
-
-  // Ray cast — check platform occlusion
-  const dy=py-awy,steps=40;
+function hasLOS(s,ax,awy,px,py){
+  // Cast ray in steps, check if any platform blocks it
+  const dx=px-ax,dy=py-awy,steps=40;
   for(let i=1;i<steps;i++){
-    const rx=ax+dx*(i/steps),ry=awy+dy*(i/steps);
-    for(const p of s.plats) if(rx>p.x&&rx<p.x+p.w&&ry>p.y&&ry<p.y+p.h) return false;
+    const rx=ax+dx*(i/steps), ry=awy+dy*(i/steps);
+    for(const p of s.plats){
+      if(rx>p.x&&rx<p.x+p.w&&ry>p.y&&ry<p.y+p.h) return false;
+    }
   }
   return true;
 }
@@ -372,28 +422,21 @@ function hasLOS(s,ax,awy,px,py,side){
 function updateArchers(s){
   const pl=s.pl;
   for(const ar of s.archers){
-    ar.frame++;ar.shootTimer--;
+    ar.frame++;
+    ar.shootTimer--;
     if(ar.shootTimer<=0){
       ar.shootTimer=ARCHER_SHOOT_INTERVAL;
+      // Only shoot if player is on screen and visible
       const asy=ar.wy-s.cam;
-      if(asy>-80&&asy<H+80&&hasLOS(s,ar.x,ar.wy,pl.x,pl.y,ar.side)){
-        // Arrow spawns from bow position (inset from wall, at torso height)
-        const bowOffX = ar.side==='left' ? 26 : -26;
-        const bowWy   = ar.wy - 30; // bow is ~30px above feet (torso/arm height)
-        const dx=pl.x-(ar.x+bowOffX), dy=pl.y-bowWy;
+      if(asy>-80&&asy<H+80&&hasLOS(s,ar.x,ar.wy,pl.x,pl.y)){
+        // Aim: compute initial velocity to arc to player
+        const dx=pl.x-ar.x,dy=pl.y-ar.wy;
         const dist=Math.sqrt(dx*dx+dy*dy)||1;
-        // Gravity-compensated aim: solve for launch angle that hits target
-        // using ballistic formula  vy0 = dy/t - 0.5*g*t,  vx0 = dx/t
-        // pick travel time t = dist / ARROW_SPEED, then correct vy for gravity drop
-        const g=0.18;
-        const t=dist/ARROW_SPEED;
-        const vx=(dx/dist)*ARROW_SPEED;
-        const vy=dy/t - 0.5*g*t;  // compensate for gravity over travel time
-        // Clamp so arrows don't go absurdly fast on very close shots
-        const spd=Math.sqrt(vx*vx+vy*vy);
-        const maxSpd=ARROW_SPEED*2.2;
-        const scale=spd>maxSpd?maxSpd/spd:1;
-        s.arrows.push({x:ar.x+bowOffX, wy:bowWy, vx:vx*scale, vy:vy*scale, dead:false});
+        const spd=ARROW_SPEED;
+        // Give a slight upward arc so it travels in a parabola
+        const vx=(dx/dist)*spd;
+        const vy=(dy/dist)*spd - Math.abs(dx/dist)*1.5;
+        s.arrows.push({x:ar.x,wy:ar.wy,vx,vy,dead:false,fromArcher:ar});
       }
     }
   }
@@ -401,40 +444,63 @@ function updateArchers(s){
 
 function updateArrows(s){
   const pl=s.pl;
+  const grav=0.18; // lighter gravity than player for longer arcs
   for(const ar of s.arrows){
     if(ar.dead) continue;
-    ar.wy+=ar.vy;ar.x+=ar.vx;ar.vy+=0.18;
+    ar.wy+=ar.vy; ar.x+=ar.vx; ar.vy+=grav;
+    // Platform collision — stop arrow
     let hit=false;
-    for(const p of s.plats) if(ar.x>p.x&&ar.x<p.x+p.w&&ar.wy>p.y&&ar.wy<p.y+p.h){hit=true;break;}
-    if(hit||ar.x<WALL||ar.x>W-WALL){ar.dead=true;continue;}
+    for(const p of s.plats){
+      if(ar.x>p.x&&ar.x<p.x+p.w&&ar.wy>p.y&&ar.wy<p.y+p.h){hit=true;break;}
+    }
+    if(hit){ar.dead=true;continue;}
+    // Wall collision
+    if(ar.x<WALL||ar.x>W-WALL){ar.dead=true;continue;}
+    // Player hit
     const dx=ar.x-pl.x,dy=ar.wy-pl.y;
-    if(Math.sqrt(dx*dx+dy*dy)<12){ar.dead=true;takeDamage(s,1,'🏹 ARROW!');}
+    if(Math.sqrt(dx*dx+dy*dy)<12){
+      ar.dead=true;
+      takeDamage(s,1,'🏹 ARROW!');
+    }
   }
 }
 
-// ── Update ────────────────────────────────────────────────────────────────────
+// ── Update ─────────────────────────────────────────────────────────────────────
 function update(s){
   s.tick++;
   const pl=s.pl,prevY=pl.y,prevX=pl.x;
   const grav=upgVal('gravity'),ab=airbrakeVal();
+
   if(pl.vy>0) pl.fallVy=Math.max(pl.fallVy,pl.vy);
-  pl.vy+=grav;if(!pl.onG)pl.vx*=ab;pl.x+=pl.vx;pl.y+=pl.vy;
-  if(pl.hurtTimer>0)pl.hurtTimer--;if(pl.damageFlash>0)pl.damageFlash--;
+  pl.vy+=grav;
+  if(!pl.onG) pl.vx*=ab;
+  pl.x+=pl.vx;pl.y+=pl.vy;
+  if(pl.hurtTimer>0) pl.hurtTimer--;
+  if(pl.damageFlash>0) pl.damageFlash--;
+
+  // Walls — no flash, just physics
   const bounce=upgVal('bounce');
   if(pl.x-pl.w/2<WALL){pl.x=WALL+pl.w/2;pl.vx=Math.abs(pl.vx)*bounce;}
   if(pl.x+pl.w/2>W-WALL){pl.x=W-WALL-pl.w/2;pl.vx=-Math.abs(pl.vx)*bounce;}
+
   if(pl.onG){pl.coyote=upgVal('coyote')|0;pl.airJumpsLeft=maxAirJumps();}
   else if(pl.coyote>0) pl.coyote--;
   pl.onG=false;
+
   for(const p of s.plats){
     const plL=pl.x-pl.w/2,plR=pl.x+pl.w/2,plT=pl.y-pl.h/2,plF=pl.y+pl.h/2;
-    const prF=prevY+pl.h/2,prT=prevY-pl.h/2,prR=prevX+pl.w/2,prL=prevX-pl.w/2;
+    const prL=prevX-pl.w/2,prR=prevX+pl.w/2,prT=prevY-pl.h/2,prF=prevY+pl.h/2;
     const pR=p.x+p.w,pB=p.y+p.h;
     if(plR<=p.x||plL>=pR||plF<=p.y||plT>=pB) continue;
     const fromTop=prF<=p.y,fromBot=prT>=pB,fromL=prR<=p.x,fromR=prL>=pR;
     const lf=p.icy?0.99:frictionVal();
     if(fromTop){
-      if(pl.fallVy>=FALL_THRESH){const resist=upgVal('fallres');let dmg=pl.fallVy>=FALL_SEVERE?2:1;dmg=Math.max(0,dmg-Math.floor(resist));if(dmg>0&&Math.random()>resist-Math.floor(resist))takeDamage(s,dmg,'FALL!');}
+      if(pl.fallVy>=FALL_THRESH){
+        const resist=upgVal('fallres');
+        let dmg=pl.fallVy>=FALL_SEVERE?2:1;
+        dmg=Math.max(0,dmg-Math.floor(resist));
+        if(dmg>0&&Math.random()>resist-Math.floor(resist)) takeDamage(s,dmg,'FALL!');
+      }
       pl.fallVy=0;pl.y=p.y-pl.h/2;pl.vy=0;pl.vx*=lf;pl.onG=true;
     } else if(fromBot){pl.fallVy=0;pl.y=pB+pl.h/2;pl.vy=Math.abs(pl.vy)*0.3;}
     else if(fromL){pl.x=p.x-pl.w/2;pl.vx=-Math.abs(pl.vx)*0.3;}
@@ -456,25 +522,45 @@ function update(s){
     coin.bob+=0.05;
     const dx=pl.x-coin.x,dy=pl.y-coin.y,dist=Math.sqrt(dx*dx+dy*dy);
     if(dist<mag*2.5&&dist>mag){coin.x+=dx/dist*3;coin.y+=dy/dist*3;}
-    if(dist<mag){coin.collected=true;s.collectedCoins.add(coin.id);s.session_coins+=val;totalCoins+=val;addFloat(coin.x,coin.y-s.cam,val>1?'+'+val+' ⚜':'+⚜','#ffcc44');}
+    if(dist<mag){
+      coin.collected=true;
+      s.collectedCoins.add(coin.id);
+      s.session_coins+=val;totalCoins+=val;
+      addFloat(coin.x,coin.y-s.cam,val>1?'+'+val+' ⚜':'+⚜','#ffcc44');
+    }
   }
+
+  // Heart collection
   for(const heart of s.hearts){
     if(heart.collected) continue;
     heart.bob+=0.04;
     const dx=pl.x-heart.x,dy=pl.y-heart.y,dist=Math.sqrt(dx*dx+dy*dy);
     if(dist<18){
-      heart.collected=true;s.collectedHearts.add(heart.id);
-      if(pl.hp<pl.maxHp){pl.hp=Math.min(pl.maxHp,pl.hp+1);addFloat(heart.x,heart.y-s.cam,'❤️ +1','#ff88aa');updateHeartsUI(pl);}
-      else addFloat(heart.x,heart.y-s.cam,'FULL','#ff88aa');
+      heart.collected=true;
+      s.collectedHearts.add(heart.id);
+      if(pl.hp<pl.maxHp){
+        pl.hp=Math.min(pl.maxHp,pl.hp+1);
+        addFloat(heart.x,heart.y-s.cam,'❤️ +1','#ff88aa');
+        updateHeartsUI(pl);
+      } else {
+        addFloat(heart.x,heart.y-s.cam,'FULL','#ff88aa');
+      }
     }
   }
-  updateBats(s);checkSpikes(s);updateArchers(s);updateArrows(s);
+
+  updateBats(s);
+  checkSpikes(s);
+  updateArchers(s);
+  updateArrows(s);
   s.cam+=(pl.y-H*.4-s.cam)*.07;
   s.score=Math.floor(-pl.y/10);
-  if(s.score>best)best=s.score;if(s.score<lowest)lowest=s.score;
+  if(s.score>best) best=s.score;
+  if(s.score<lowest) lowest=s.score;
   floats=floats.filter(f=>{f.y+=f.vy;f.life--;return f.life>0;});
   gen(s);cull(s);
+
   if(++saveTimer>300){saveTimer=0;saveGame(s);}
+
   document.getElementById('score').textContent='FLOOR: '+s.score;
   document.getElementById('best').textContent='BEST: '+best+' / '+lowest;
   document.getElementById('coindisp').textContent='⚜ '+totalCoins;
@@ -483,15 +569,17 @@ function update(s){
 }
 
 function takeDamage(s,dmg,label){
-  const pl=s.pl;if(pl.hurtTimer>0)return;
+  const pl=s.pl;
+  if(pl.hurtTimer>0) return;
   pl.hp=Math.max(0,pl.hp-dmg);pl.hurtTimer=60;pl.damageFlash=20;
   addFloat(pl.x,pl.y-s.cam-20,label||'-'+dmg+'❤️','#ff4444');
-  updateHeartsUI(pl);if(pl.hp<=0)killPlayer(s);
+  updateHeartsUI(pl);
+  if(pl.hp<=0) killPlayer(s);
 }
 function killPlayer(s){s.alive=false;saveGame(null);showGO(s);}
 function updateHeartsUI(pl){
-  const mhp=pl.maxHp||maxHP();let h='';
-  for(let i=0;i<mhp;i++)h+=i<pl.hp?'❤️':'🖤';
+  const mhp=pl.maxHp||maxHP();
+  let h='';for(let i=0;i<mhp;i++) h+=i<pl.hp?'❤️':'🖤';
   document.getElementById('hearts').textContent=h;
 }
 
@@ -513,19 +601,25 @@ function up(){
   if(dist<8){drag=null;return;}
   if(!canLaunch()){drag=null;return;}
   const d=Math.min(dist,130),a=Math.atan2(dy,dx),pw=d/130;
-  S.pl.vx=-Math.cos(a)*pw*upgVal('power');S.pl.vy=-Math.sin(a)*pw*upgVal('power');
+  S.pl.vx=-Math.cos(a)*pw*upgVal('power');
+  S.pl.vy=-Math.sin(a)*pw*upgVal('power');
   if(!S.pl.onG&&S.pl.coyote<=0) S.pl.airJumpsLeft=Math.max(0,S.pl.airJumpsLeft-1);
   S.pl.onG=false;drag=null;
 }
 
-// ── Trajectory ────────────────────────────────────────────────────────────────
+// ── Trajectory simulation ─────────────────────────────────────────────────────
 const BOUNCE_COLORS=[[255,200,80],[80,200,255],[180,80,255],[80,255,120],[255,140,40]];
+
 function simTrajectory(sx,sy,vx0,vy0,totalSteps){
-  const grav=upgVal('gravity'),ab=airbrakeVal(),bc=upgVal('bounce'),pf=frictionVal();
-  const hw=9,hh=12;let tx=sx,ty=sy,tvx=vx0,tvy=vy0;
+  // Single shared step budget. Bounces consume from the same pool, so a longer
+  // Wizard Sight preview naturally reveals however many bounces fit within it.
+  const grav=upgVal("gravity"),ab=airbrakeVal(),bc=upgVal("bounce"),pf=frictionVal();
+  const hw=9,hh=12;
+  let tx=sx,ty=sy,tvx=vx0,tvy=vy0;
   const segs=[{dots:[],bounced:false,bi:0}];
   for(let i=0;i<totalSteps;i++){
-    const ptx=tx,pty=ty;tvy+=grav;tvx*=ab;tx+=tvx;ty+=tvy;
+    const ptx=tx,pty=ty;
+    tvy+=grav;tvx*=ab;tx+=tvx;ty+=tvy;
     let hit=false;
     if(tx-hw<=WALL){tx=WALL+hw;tvx=Math.abs(tvx)*bc;hit=true;}
     else if(tx+hw>=W-WALL){tx=W-WALL-hw;tvx=-Math.abs(tvx)*bc;hit=true;}
@@ -533,7 +627,8 @@ function simTrajectory(sx,sy,vx0,vy0,totalSteps){
       for(const p of S.plats){
         const pR=p.x+p.w,pB=p.y+p.h;
         if(tx+hw<=p.x||tx-hw>=pR||ty+hh<=p.y||ty-hh>=pB) continue;
-        const fromTop=(pty+hh)<=p.y,fromBot=(pty-hh)>=pB,fromLeft=(ptx+hw)<=p.x,fromRight=(ptx-hw)>=pR;
+        const fromTop=(pty+hh)<=p.y,fromBot=(pty-hh)>=pB;
+        const fromLeft=(ptx+hw)<=p.x,fromRight=(ptx-hw)>=pR;
         if(fromTop){ty=p.y-hh;tvy=-Math.abs(tvy)*0.5;tvx*=pf;hit=true;}
         else if(fromBot){ty=pB+hh;tvy=Math.abs(tvy)*0.3;hit=true;}
         else if(fromLeft){tx=p.x-hw;tvx=-Math.abs(tvx)*bc;hit=true;}
@@ -543,24 +638,50 @@ function simTrajectory(sx,sy,vx0,vy0,totalSteps){
       }
     }
     segs[segs.length-1].dots.push({x:tx,y:ty});
-    if(hit){segs[segs.length-1].bounced=true;segs.push({dots:[],bounced:false,bi:segs.length});}
+    if(hit){
+      segs[segs.length-1].bounced=true;
+      segs.push({dots:[],bounced:false,bi:segs.length});
+    }
   }
   if(segs[segs.length-1].dots.length===0) segs.pop();
   return segs;
 }
 
 // ── Draw ──────────────────────────────────────────────────────────────────────
+
 function drawCastleWall(){
-  const bH=16,bW=32,topWorldRow=Math.floor(S.cam/bH);
+  // FIX: draw each brick using fully integer-aligned coordinates derived from
+  // the world-row index, avoiding sub-pixel drift that causes shimmer/overlap.
+  const bH=16,bW=32;
+  // Which world row sits at the very top of the screen
+  const topWorldRow=Math.floor(S.cam/bH);
+
   for(let row=topWorldRow-1;row<=topWorldRow+Math.ceil(H/bH)+1;row++){
-    const off=(row%2===0)?0:bW/2,wy=Math.round((row*bH)-S.cam);
+    const off=(row%2===0)?0:bW/2;
+    // Screen Y of this row's top edge — integer-snapped
+    const wy=Math.round((row*bH)-S.cam);
+
+    // Deterministic shade per row using hash (no random per frame)
     const shade=row%3===0?'#2a2520':row%3===1?'#252018':'#221e15';
+
     for(let col=-1;col<=Math.ceil(W/bW)+1;col++){
       const bx=Math.round(col*bW+off);
+      // Only draw if on screen
       if(bx+bW<0||bx>W||wy+bH<0||wy>H) continue;
-      ctx.fillStyle=shade;ctx.fillRect(bx,wy,bW-2,bH-2);
-      ctx.fillStyle='#141210';ctx.fillRect(bx,wy+bH-2,bW,2);ctx.fillRect(bx+bW-2,wy,2,bH);
-      if(hash2(row,col)<0.12){ctx.fillStyle='#0e0c0a';ctx.fillRect(bx+8,wy+4,1,6);}
+
+      ctx.fillStyle=shade;
+      ctx.fillRect(bx,wy,bW-2,bH-2);
+
+      // Mortar (gaps between bricks)
+      ctx.fillStyle='#141210';
+      ctx.fillRect(bx,wy+bH-2,bW,2);   // horizontal mortar
+      ctx.fillRect(bx+bW-2,wy,2,bH);   // vertical mortar
+
+      // Deterministic crack
+      if(hash2(row,col)<0.12){
+        ctx.fillStyle='#0e0c0a';
+        ctx.fillRect(bx+8,wy+4,1,6);
+      }
     }
   }
 }
@@ -579,9 +700,16 @@ function drawTorch(x,y){
 }
 
 function drawWalls(){
-  for(let y=0;y<H;y+=12){ctx.fillStyle=y%24<12?'#3a3530':'#332f2a';ctx.fillRect(0,y,WALL,12);}
+  // No flash — static stone walls only
+  for(let y=0;y<H;y+=12){
+    ctx.fillStyle=y%24<12?'#3a3530':'#332f2a';
+    ctx.fillRect(0,y,WALL,12);
+  }
   ctx.fillStyle='#555';ctx.fillRect(WALL-2,0,2,H);
-  for(let y=0;y<H;y+=12){ctx.fillStyle=y%24<12?'#3a3530':'#332f2a';ctx.fillRect(W-WALL,y,WALL,12);}
+  for(let y=0;y<H;y+=12){
+    ctx.fillStyle=y%24<12?'#3a3530':'#332f2a';
+    ctx.fillRect(W-WALL,y,WALL,12);
+  }
   ctx.fillStyle='#555';ctx.fillRect(W-WALL,0,2,H);
 }
 
@@ -591,18 +719,21 @@ function drawPlatform(p){
     ctx.fillStyle='#445566';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
     ctx.fillStyle='#7aaccc';ctx.fillRect(p.x|0,sy,p.w|0,4);
     ctx.fillStyle='#aaddee';ctx.fillRect(p.x|0,sy,p.w|0,2);
-    ctx.fillStyle='#cceeff';for(let i=6;i<p.w-4;i+=14)ctx.fillRect((p.x+i)|0,sy+1,4,2);
+    ctx.fillStyle='#cceeff';
+    for(let i=6;i<p.w-4;i+=14) ctx.fillRect((p.x+i)|0,sy+1,4,2);
     ctx.fillStyle='rgba(180,230,255,0.12)';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
     ctx.fillStyle='#334455';ctx.fillRect((p.x+2)|0,(sy+p.h)|0,p.w|0,4);
   } else {
     ctx.fillStyle='#44403a';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
     ctx.fillStyle='#6a6258';ctx.fillRect(p.x|0,sy,p.w|0,4);
     ctx.fillStyle='#7a7268';ctx.fillRect(p.x|0,sy,p.w|0,2);
-    ctx.fillStyle='#50483e';for(let i=4;i<p.w-4;i+=18)ctx.fillRect((p.x+i)|0,sy-5,10,6);
-    ctx.fillStyle='#33302a';ctx.fillRect(p.x|0,sy+6,p.w|0,2);
-    for(let i=20;i<p.w;i+=20)ctx.fillRect((p.x+i)|0,sy,2,p.h);
+    ctx.fillStyle='#50483e';
+    for(let i=4;i<p.w-4;i+=18) ctx.fillRect((p.x+i)|0,sy-5,10,6);
+    ctx.fillStyle='#33302a';
+    ctx.fillRect(p.x|0,sy+6,p.w|0,2);
+    for(let i=20;i<p.w;i+=20) ctx.fillRect((p.x+i)|0,sy,2,p.h);
     ctx.fillStyle='rgba(0,0,0,0.25)';ctx.fillRect((p.x+2)|0,(sy+p.h)|0,p.w|0,4);
-    if(p.torch)drawTorch(p.x+p.w/2,sy-2);
+    if(p.torch) drawTorch(p.x+p.w/2,sy-2);
   }
 }
 
@@ -611,153 +742,68 @@ function drawSpikes(p){
   const sy=(p.y-S.cam)|0;
   for(const sp of p.spikes){
     const sx=sp.x|0;
-    // Rusty iron base
-    ctx.fillStyle='#4a3a2a';ctx.fillRect(sx-5,sy-1,10,2);
-    // Center spike (tallest)
-    ctx.fillStyle='#777';ctx.fillRect(sx-1,sy-12,3,12);
-    ctx.fillStyle='#555';ctx.fillRect(sx+1,sy-12,1,12);
-    ctx.fillStyle='#aaa';ctx.fillRect(sx-1,sy-12,1,4);
-    // Left spike
-    ctx.fillStyle='#666';ctx.fillRect(sx-5,sy-8,2,8);
-    ctx.fillStyle='#999';ctx.fillRect(sx-5,sy-8,1,3);
-    // Right spike
-    ctx.fillStyle='#666';ctx.fillRect(sx+3,sy-8,2,8);
-    ctx.fillStyle='#999';ctx.fillRect(sx+3,sy-8,1,3);
-    // Dried blood fleck
-    ctx.fillStyle='#661111';ctx.fillRect(sx-1,sy-6,1,2);
+    ctx.fillStyle='#888';
+    // Three-pronged spike cluster pixel art
+    ctx.fillRect(sx-1,sy-10,2,10);   // center spike
+    ctx.fillRect(sx-5,sy-7,2,7);     // left spike
+    ctx.fillRect(sx+3,sy-7,2,7);     // right spike
+    ctx.fillStyle='#aaa';
+    ctx.fillRect(sx,sy-10,1,3);      // highlight center tip
+    ctx.fillRect(sx-4,sy-7,1,3);     // highlight left tip
+    ctx.fillRect(sx+4,sy-7,1,3);     // highlight right tip
+    // Dark base
+    ctx.fillStyle='#555';
+    ctx.fillRect(sx-5,sy-1,10,1);
   }
 }
 
-// ── Skeleton Archer — hooded, crouching, bow-forward ─────────────────────────
 function drawArcher(ar){
   const sy=(ar.wy-S.cam)|0;
-  if(sy<-80||sy>H+80) return;
-
-  const dir=ar.side==='left'?1:-1;
-  const bx=ar.x|0;
-
-  const charging=ar.shootTimer<70;
-  const chargeT=charging?Math.max(0,1-(ar.shootTimer/70)):0;
-
-  // ── Stone perch jutting from the wall ──
-  const perchW=22, perchH=8;
-  const perchX=ar.side==='left'?0:W-WALL-perchW; // flush with wall interior
-  // Main stone block
-  ctx.fillStyle='#4a4540';ctx.fillRect(perchX,sy-2,perchW,perchH);
-  // Top face (lighter)
-  ctx.fillStyle='#6a6258';ctx.fillRect(perchX,sy-2,perchW,3);
-  // Top highlight
-  ctx.fillStyle='#7a7268';ctx.fillRect(perchX,sy-2,perchW,1);
-  // Stone block seam
-  ctx.fillStyle='#33302a';ctx.fillRect(perchX+perchW/2,sy-2,1,perchH);
-  // Corbel support underneath (wedge shape approximated with rects)
-  ctx.fillStyle='#3a3530';
-  if(ar.side==='left'){
-    ctx.fillRect(WALL,sy+perchH,10,4);
-    ctx.fillRect(WALL,sy+perchH+4,6,3);
-  } else {
-    ctx.fillRect(W-WALL-10,sy+perchH,10,4);
-    ctx.fillRect(W-WALL-6,sy+perchH+4,6,3);
+  if(sy<-40||sy>H+40) return;
+  const flip=ar.side==='right'?-1:1;
+  // Body
+  ctx.fillStyle='#c8c8c8';
+  ctx.fillRect((ar.x-3*flip)|0,sy-18,6,8);   // torso
+  // Skull
+  ctx.fillStyle='#ddd';
+  ctx.fillRect((ar.x-3*flip)|0,sy-26,6,7);
+  ctx.fillStyle='#000';
+  ctx.fillRect((ar.x-2*flip)|0,sy-24,2,2);   // eye socket L
+  ctx.fillRect((ar.x+1*flip)|0,sy-24,2,2);   // eye socket R... wait, just use fixed
+  // Legs
+  ctx.fillStyle='#aaa';
+  ctx.fillRect((ar.x-3*flip)|0,sy-10,2,10);
+  ctx.fillRect((ar.x+1*flip)|0,sy-10,2,10);
+  // Bow arm reaching out
+  ctx.fillStyle='#8B4513';
+  ctx.fillRect((ar.x-flip*8)|0,sy-16,8*flip,2); // bow stick
+  ctx.fillStyle='#c8a055';
+  ctx.fillRect((ar.x-flip*8)|0,sy-20,1,10);      // bowstring
+  // Arrow nocked
+  if(ar.shootTimer>ARCHER_SHOOT_INTERVAL-30){
+    ctx.fillStyle='#cc8833';
+    ctx.fillRect((ar.x-flip*8)|0,sy-18,8*flip,1);
+    ctx.fillStyle='#888';
+    ctx.fillRect((ar.x+flip*2)|0,sy-19,2,2);     // arrowhead
   }
-  // Perch shadow
-  ctx.fillStyle='rgba(0,0,0,0.35)';ctx.fillRect(perchX,sy+perchH,perchW,3);
-
-  ctx.save();
-  if(dir===-1){ctx.translate(bx*2,0);ctx.scale(-1,1);}
-
-  const ox=bx;
-
-  // ── Ambient skull glow ──
-  const glow=ctx.createRadialGradient(ox+2,sy-28,0,ox+2,sy-28,18);
-  glow.addColorStop(0,'rgba(60,220,80,0.22)');glow.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle=glow;ctx.beginPath();ctx.arc(ox+2,sy-28,18,0,Math.PI*2);ctx.fill();
-
-  // ── Crouching legs ──
-  ctx.fillStyle='#8a8278';
-  ctx.fillRect(ox-3,sy-8,4,8);ctx.fillRect(ox-4,sy-2,6,2);
-  ctx.fillRect(ox+1,sy-10,4,10);ctx.fillRect(ox+1,sy-1,6,2);
-  ctx.fillStyle='#706860';ctx.fillRect(ox+1,sy-5,3,3);
-
-  // ── Dark hooded cloak ──
-  ctx.fillStyle='#2a2838';
-  ctx.fillRect(ox-7,sy-32,16,22);
-  ctx.fillRect(ox-9,sy-28,4,20);ctx.fillRect(ox+8,sy-26,4,18);
-  ctx.fillStyle='#221e2e';
-  ctx.fillRect(ox-9,sy-10,3,6);ctx.fillRect(ox-5,sy-8,3,8);
-  ctx.fillRect(ox,sy-8,3,7);ctx.fillRect(ox+5,sy-10,3,5);ctx.fillRect(ox+8,sy-9,3,6);
-  ctx.fillStyle='#3a3650';
-  ctx.fillRect(ox-5,sy-32,2,20);ctx.fillRect(ox+2,sy-30,2,16);
-
-  // ── Hood ──
-  ctx.fillStyle='#222030';
-  ctx.fillRect(ox-6,sy-44,14,14);ctx.fillRect(ox-5,sy-47,12,5);
-  ctx.fillRect(ox-4,sy-49,10,3);ctx.fillRect(ox-3,sy-50,8,2);
-  ctx.fillStyle='#111020';ctx.fillRect(ox-2,sy-44,8,6);
-  ctx.fillStyle='#34304a';ctx.fillRect(ox-6,sy-46,3,12);
-
-  // ── Skull ──
-  ctx.fillStyle='#ddd8c8';
-  ctx.fillRect(ox-3,sy-43,9,8);ctx.fillRect(ox-2,sy-45,7,3);ctx.fillRect(ox-1,sy-46,5,2);
-  ctx.fillStyle='#b8b2a2';ctx.fillRect(ox+4,sy-43,2,7);ctx.fillRect(ox-3,sy-43,1,7);
-  ctx.fillStyle='#ccc6b6';ctx.fillRect(ox-4,sy-37,4,4);ctx.fillRect(ox+3,sy-37,4,4);
-  ctx.fillStyle='#b8b2a2';ctx.fillRect(ox-3,sy-36,9,5);
-  ctx.fillStyle='#a8a292';ctx.fillRect(ox-2,sy-34,8,3);
-  ctx.fillStyle='#eeeade';
-  ctx.fillRect(ox-2,sy-34,2,3);ctx.fillRect(ox+1,sy-34,2,3);ctx.fillRect(ox+4,sy-34,2,3);
-  ctx.fillStyle='#888';ctx.fillRect(ox,sy-34,1,2);ctx.fillRect(ox+3,sy-34,1,2);
-  ctx.fillStyle='#222';ctx.fillRect(ox,sy-38,3,4);
-  ctx.fillStyle='#111';ctx.fillRect(ox-3,sy-42,4,5);ctx.fillRect(ox+2,sy-42,4,5);
-  ctx.fillStyle='#1a1a1a';ctx.fillRect(ox-4,sy-41,2,3);ctx.fillRect(ox+5,sy-41,2,3);
-  ctx.fillStyle='rgba(80,255,90,0.9)';ctx.fillRect(ox-2,sy-41,2,3);ctx.fillRect(ox+3,sy-41,2,3);
-  ctx.fillStyle='rgba(180,255,180,0.95)';ctx.fillRect(ox-2,sy-40,1,1);ctx.fillRect(ox+3,sy-40,1,1);
-
-  // ── Bow arm ──
-  ctx.fillStyle='#2a2838';ctx.fillRect(ox+4,sy-30,10,5);
-  ctx.fillStyle='#ccc6b6';ctx.fillRect(ox+12,sy-30,4,4);
-  ctx.fillRect(ox+14,sy-32,3,2);ctx.fillRect(ox+14,sy-28,3,2);
-
-  // ── Bow ──
-  const bowX=ox+18;
-  ctx.strokeStyle='#8b6020';ctx.lineWidth=3;
-  ctx.beginPath();ctx.moveTo(bowX,sy-40);ctx.quadraticCurveTo(bowX+8,sy-30,bowX,sy-20);ctx.stroke();
-  ctx.strokeStyle='#6a4810';ctx.lineWidth=1.5;
-  ctx.beginPath();ctx.moveTo(bowX+1,sy-40);ctx.quadraticCurveTo(bowX+7,sy-30,bowX+1,sy-20);ctx.stroke();
-  ctx.fillStyle='#5a3818';ctx.fillRect(bowX-1,sy-33,3,7);
-  ctx.fillStyle='#7a5030';ctx.fillRect(bowX-1,sy-33,1,7);
-  const pull=charging?chargeT*5:0;
-  ctx.strokeStyle='#d4c88e';ctx.lineWidth=1;
-  ctx.beginPath();ctx.moveTo(bowX,sy-40);ctx.lineTo(bowX-pull,sy-30);ctx.lineTo(bowX,sy-20);ctx.stroke();
-
-  // ── Nocked arrow ──
-  if(charging){
-    ctx.globalAlpha=0.6+chargeT*0.4;
-    ctx.fillStyle='#aa7722';ctx.fillRect(ox+4,sy-31,bowX-pull-ox-5,2);
-    ctx.fillStyle='#999';ctx.fillRect(bowX,sy-32,5,4);
-    ctx.fillStyle='#ccc';ctx.fillRect(bowX+1,sy-32,2,1);
-    ctx.fillStyle='#884422';ctx.fillRect(ox+4,sy-33,3,4);ctx.fillRect(ox+5,sy-33,1,5);
-    if(chargeT>0.5){ctx.fillStyle=`rgba(255,200,50,${(chargeT-0.5)*0.6})`;ctx.fillRect(bowX-pull-1,sy-32,3,4);}
-    ctx.globalAlpha=1;
-  }
-
-  // ── Quiver ──
-  ctx.fillStyle='#3a2810';ctx.fillRect(ox-8,sy-38,5,16);
-  ctx.fillStyle='#2a1e0c';ctx.fillRect(ox-8,sy-38,5,3);
-  ctx.fillStyle='#aa8833';ctx.fillRect(ox-7,sy-42,1,6);ctx.fillRect(ox-5,sy-43,1,7);ctx.fillRect(ox-3,sy-41,1,5);
-  ctx.fillStyle='#888';ctx.fillRect(ox-7,sy-43,1,2);ctx.fillRect(ox-5,sy-44,1,2);ctx.fillRect(ox-3,sy-42,1,2);
-
-  ctx.restore();
+  // Subtle glow
+  ctx.fillStyle='rgba(255,220,150,0.08)';
+  ctx.beginPath();ctx.arc(ar.x,sy-13,18,0,Math.PI*2);ctx.fill();
 }
 
 function drawArrows(){
+  ctx.fillStyle='#cc8833';
   for(const ar of S.arrows){
     if(ar.dead) continue;
-    const sy=(ar.wy-S.cam)|0,angle=Math.atan2(ar.vy,ar.vx);
-    ctx.save();ctx.translate(ar.x|0,sy);ctx.rotate(angle);
-    ctx.fillStyle='#cc8833';ctx.fillRect(-9,-1,18,2);
-    ctx.fillStyle='#aaa';ctx.fillRect(7,-2,4,4);
-    ctx.fillStyle='#995500';ctx.fillRect(-9,-2,4,4);
-    // Arrow shaft wood grain
-    ctx.fillStyle='rgba(0,0,0,0.2)';ctx.fillRect(-8,0,16,1);
+    const sy=(ar.wy-S.cam)|0;
+    // Rotate arrow sprite to follow trajectory angle
+    const angle=Math.atan2(ar.vy,ar.vx);
+    ctx.save();
+    ctx.translate(ar.x|0,sy);
+    ctx.rotate(angle);
+    ctx.fillStyle='#cc8833';ctx.fillRect(-8,-1,16,2);  // shaft
+    ctx.fillStyle='#888';ctx.fillRect(6,-2,4,4);        // head
+    ctx.fillStyle='#884400';ctx.fillRect(-8,-2,3,4);    // fletching
     ctx.restore();
   }
 }
@@ -773,20 +819,36 @@ function drawGold(coin){
   ctx.fillStyle='#ffe066';ctx.fillRect((coin.x-4)|0,(sy-5)|0,8,10);
   ctx.fillStyle='#fff8aa';ctx.fillRect((coin.x-3)|0,(sy-4)|0,3,3);
   ctx.fillStyle='#aa7700';
-  ctx.fillRect((coin.x-1)|0,(sy-3)|0,2,6);ctx.fillRect((coin.x-3)|0,(sy-1)|0,6,2);ctx.fillRect((coin.x-1)|0,(sy-5)|0,2,2);
+  ctx.fillRect((coin.x-1)|0,(sy-3)|0,2,6);
+  ctx.fillRect((coin.x-3)|0,(sy-1)|0,6,2);
+  ctx.fillRect((coin.x-1)|0,(sy-5)|0,2,2);
 }
 
 function drawHeart(heart){
   if(heart.collected) return;
-  const sy=(heart.y-S.cam+Math.sin(heart.bob)*3)|0,hx=heart.x|0;
+  const sy=(heart.y-S.cam+Math.sin(heart.bob)*3)|0;
+  const hx=heart.x|0;
+  // Soft pink glow
   const grd=ctx.createRadialGradient(hx,sy,0,hx,sy,16);
   grd.addColorStop(0,'rgba(255,100,140,0.35)');grd.addColorStop(1,'rgba(255,50,80,0)');
   ctx.fillStyle=grd;ctx.beginPath();ctx.arc(hx,sy,16,0,Math.PI*2);ctx.fill();
+  // Pixel heart shape (12x11 px)
   const px=(x,y,w,h)=>ctx.fillRect(hx-6+x,sy-5+y,w,h);
   ctx.fillStyle='#cc2244';
-  px(1,0,3,2);px(5,0,3,2);px(0,1,4,2);px(4,1,4,2);px(0,2,9,3);px(1,5,7,2);px(2,7,5,2);px(3,9,3,1);px(4,10,1,1);
-  ctx.fillStyle='#ff6688';px(1,1,2,1);px(5,1,2,1);ctx.fillStyle='#ff99aa';px(1,2,1,1);
+  px(1,0,3,2); px(5,0,3,2);
+  px(0,1,4,2); px(4,1,4,2);
+  px(0,2,9,3);
+  px(1,5,7,2);
+  px(2,7,5,2);
+  px(3,9,3,1);
+  px(4,10,1,1);
+  // Highlight
+  ctx.fillStyle='#ff6688';
+  px(1,1,2,1); px(5,1,2,1);
+  ctx.fillStyle='#ff99aa';
+  px(1,2,1,1);
 }
+
 
 function drawKnight(){
   const pl=S.pl;
@@ -834,17 +896,22 @@ function drawKnight(){
 function drawBat(bt){
   const sy=(bt.wy-S.cam)|0;
   if(sy<-30||sy>H+30) return;
-  const agro=bt.state==='agro'||bt.state==='diving',flash=bt.hurtTimer>0&&Math.floor(bt.hurtTimer/3)%2===0;
+  const agro=bt.state==='agro'||bt.state==='diving';
+  const flash=bt.hurtTimer>0&&Math.floor(bt.hurtTimer/3)%2===0;
   const wing=Math.sin(bt.flap)*(agro?10:6);
   if(flash) ctx.globalAlpha=0.4;
   if(agro&&bt.state==='agro'){ctx.fillStyle='rgba(255,140,0,0.12)';ctx.beginPath();ctx.arc(bt.x,sy,10,0,Math.PI*2);ctx.fill();}
   if(agro&&bt.state==='diving'){ctx.fillStyle='rgba(255,100,0,0.18)';ctx.beginPath();ctx.arc(bt.x,sy,12,0,Math.PI*2);ctx.fill();}
   ctx.fillStyle=agro?'#3d1010':'#2a2040';
   ctx.fillRect((bt.x-3)|0,(sy-2)|0,6,5);
-  ctx.fillRect((bt.x-12)|0,(sy-2+wing)|0,9,4);ctx.fillRect((bt.x+3)|0,(sy-2+wing)|0,9,4);
-  ctx.fillRect((bt.x-14)|0,(sy+1+wing)|0,3,2);ctx.fillRect((bt.x+11)|0,(sy+1+wing)|0,3,2);
+  ctx.fillRect((bt.x-12)|0,(sy-2+wing)|0,9,4);
+  ctx.fillRect((bt.x+3)|0,(sy-2+wing)|0,9,4);
+  ctx.fillRect((bt.x-14)|0,(sy+1+wing)|0,3,2);
+  ctx.fillRect((bt.x+11)|0,(sy+1+wing)|0,3,2);
+  // Wing membrane highlight so they read against the wall
   ctx.fillStyle=agro?'#5a1818':'#3d3060';
-  ctx.fillRect((bt.x-11)|0,(sy-1+wing)|0,7,2);ctx.fillRect((bt.x+4)|0,(sy-1+wing)|0,7,2);
+  ctx.fillRect((bt.x-11)|0,(sy-1+wing)|0,7,2);
+  ctx.fillRect((bt.x+4)|0,(sy-1+wing)|0,7,2);
   ctx.fillStyle=bt.state==='diving'?'#ff6600':agro?'#cc6600':'#441111';
   ctx.fillRect((bt.x-2)|0,(sy-1)|0,1,1);ctx.fillRect((bt.x+1)|0,(sy-1)|0,1,1);
   if(flash) ctx.globalAlpha=1;
@@ -852,34 +919,53 @@ function drawBat(bt){
 
 function drawSling(){
   if(!drag) return;
-  const pl=S.pl,camY=S.cam;
+  const pl=S.pl;
+  const ps={x:pl.x,y:pl.y};  // world coords — sim runs in world space
+  const camY=S.cam;
   const dx=drag.sx-drag.cx,dy=drag.sy-drag.cy,dist=Math.sqrt(dx*dx+dy*dy);
   if(dist<4) return;
-  const canFire=canLaunch(),pw=Math.min(dist,130)/130;
+  const canFire=canLaunch();
+  const pw=Math.min(dist,130)/130;
   const vx0=Math.cos(Math.atan2(dy,dx))*pw*upgVal('power');
   const vy0=Math.sin(Math.atan2(dy,dx))*pw*upgVal('power');
-  ctx.save();ctx.globalAlpha=canFire?0.3:0.15;ctx.strokeStyle='#aa9955';ctx.lineWidth=1;ctx.setLineDash([2,5]);
-  ctx.beginPath();ctx.moveTo(drag.sx,drag.sy);ctx.lineTo(drag.cx,drag.cy);ctx.stroke();ctx.setLineDash([]);ctx.restore();
-  const totalSteps=Math.floor(upgVal('preview')*2.6);
-  const segs=simTrajectory(pl.x,pl.y,vx0,vy0,totalSteps);
+
+  // Subtle drag line
+  ctx.save();ctx.globalAlpha=canFire?0.3:0.15;
+  ctx.strokeStyle='#aa9955';ctx.lineWidth=1;ctx.setLineDash([2,5]);
+  ctx.beginPath();ctx.moveTo(drag.sx,drag.sy);ctx.lineTo(drag.cx,drag.cy);ctx.stroke();
+  ctx.setLineDash([]);ctx.restore();
+
+  // Wizard Sight controls total simulation steps — bounces appear naturally within the budget
+  const totalSteps=Math.floor(upgVal('preview')*2.6);  // ~1/3 of previous
+  const segs=simTrajectory(ps.x,ps.y,vx0,vy0,totalSteps);
+
+  // Each segment only exists after a confirmed surface contact.
+  // Per-segment fade 1→0; bounce marker only on seg.bounced (real surface hit).
   const drawSegs=segs.slice(0,2);
   ctx.globalAlpha=canFire?1:0.3;
   drawSegs.forEach((seg,si)=>{
-    const col=BOUNCE_COLORS[0],n=seg.dots.length;
+    const col=BOUNCE_COLORS[0];
+    const n=seg.dots.length;
     seg.dots.forEach((d,di)=>{
-      const t=di/Math.max(n-1,1),fade=1-t*t,r=Math.max(0.8,3*(1-t*0.5)),alpha=fade*(si===0?1:0.85);
+      const t=di/Math.max(n-1,1);
+      const fade=1-t*t;
+      const r=Math.max(0.8,3*(1-t*0.5));
+      const alpha=fade*(si===0?1:0.85);
       if(alpha<0.02) return;
       ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
       ctx.beginPath();ctx.arc(d.x,d.y-camY,r,0,Math.PI*2);ctx.fill();
     });
     if(seg.bounced&&si<drawSegs.length-1&&seg.dots.length>0){
-      const last=seg.dots[seg.dots.length-1],lsy=last.y-camY,nc=BOUNCE_COLORS[0];
+      const last=seg.dots[seg.dots.length-1];
+      const lsy=last.y-camY;
+      const nc=BOUNCE_COLORS[0];
       ctx.strokeStyle=`rgba(${nc[0]},${nc[1]},${nc[2]},0.9)`;ctx.lineWidth=1.5;
       ctx.beginPath();ctx.moveTo(last.x-4,lsy-4);ctx.lineTo(last.x+4,lsy+4);ctx.stroke();
       ctx.beginPath();ctx.moveTo(last.x+4,lsy-4);ctx.lineTo(last.x-4,lsy+4);ctx.stroke();
     }
   });
   ctx.globalAlpha=1;
+
   const bars=Math.ceil(pw*5);
   for(let i=0;i<5;i++){ctx.fillStyle=i<bars?(pw>.7?'#ff6633':'#ffcc44'):'rgba(255,255,255,.1)';ctx.fillRect(W-WALL-16,H-32-i*8,10,6);}
   ctx.fillStyle='#886633';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText('FORCE',W-WALL-2,H-10);ctx.textAlign='left';
@@ -916,14 +1002,17 @@ function drawSky(){
 
 function frame(){
   if(S.alive&&!paused) update(S);
-  drawSky();drawCastleWall();
+  drawSky();
+  drawCastleWall();
   for(const bt of S.bats) drawBat(bt);
   for(const p of S.plats){drawPlatform(p);drawSpikes(p);}
   for(const ar of S.archers) drawArcher(ar);
   drawArrows();
   for(const c of S.coins) drawGold(c);
   for(const h of S.hearts) drawHeart(h);
-  drawKnight();drawWalls();drawSling();
+  drawKnight();
+  drawWalls();
+  drawSling();
   if(paused){ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,W,H);}
   const vig=ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
   vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,0.45)');
@@ -946,9 +1035,12 @@ function togglePause(){
   if(paused){
     btn.textContent='▶';saveGame(S);
     document.getElementById('pause-coins').textContent='⚜ '+totalCoins+' gold available';
-    renderShop('pause');document.getElementById('pausemenu').style.display='block';
+    renderShop('pause');
+    document.getElementById('pausemenu').style.display='block';
   } else {
-    btn.textContent='⏸';document.getElementById('pausemenu').style.display='none';drag=null;
+    btn.textContent='⏸';
+    document.getElementById('pausemenu').style.display='none';
+    drag=null;
   }
 }
 function dieAndShowGO(){
@@ -1004,7 +1096,8 @@ function restart(){
   document.getElementById('coindisp').textContent='⚜ '+totalCoins;
   document.getElementById('best').textContent='BEST: '+best+' / '+lowest;
   S=mkS(save&&save.pos?save.pos:null);
-  updateHeartsUI(S.pl);frame();
+  updateHeartsUI(S.pl);
+  frame();
 })();
 </script>
 </body>
