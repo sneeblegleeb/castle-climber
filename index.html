@@ -195,8 +195,6 @@ function mkS(savedPos){
     alive:true,tick:0,
     bats:[],
     hearts:[], // healing hearts
-    archers:[], // skeleton archers
-    arrows:[],  // active arrow projectiles
   };
   s.plats.push({x:sx-55,y:sy+55,w:110,h:14,icy:false,torch:false,id:0});
   for(let i=0;i<8;i++) s.bats.push(mkBat(sy+(Math.random()-.5)*H*3, sy));
@@ -247,11 +245,6 @@ function gen(s){
   // Bat top-up (idle only)
   const idle=s.bats.filter(bt=>bt.state==='idle').length;
   let add=8-idle; while(add-->0) s.bats.push(mkBat(s.cam+(Math.random()-.5)*H*2,s.pl.y));
-  // Spawn archers when far from start, max 6 on screen
-  if(Math.abs(s.pl.y)>500&&s.archers.length<6){
-    const need=6-s.archers.length;
-    for(let i=0;i<need;i++) s.archers.push(mkArcher(s.cam,s.pl.y));
-  }
 }
 
 // True if world-point (wx,wy) with radius r overlaps any platform AABB
@@ -291,9 +284,7 @@ function addP(s,wy){
   const rng1=hash2(id,1),rng2=hash2(id,2),rng3=hash2(id,3),rng4=hash2(id,4);
   const w=52+rng1*84, x=WALL+6+rng2*(avail-w-12);
   const icy=rng3<0.18, torch=!icy&&rng4<0.3;
-  // Spikes appear on platforms after |worldY|>300
-  const spikeData=Math.abs(wy)>300?genSpikes(x,w,id):[];
-  s.plats.push({x,y:wy,w,h:14,icy,torch,id,spikes:spikeData});
+  s.plats.push({x,y:wy,w,h:14,icy,torch,id});
 }
 
 function cull(s){
@@ -303,8 +294,6 @@ function cull(s){
   s.coins=s.coins.filter(c=>!c.collected&&c.y>t&&c.y<b);
   s.hearts=s.hearts.filter(h=>!h.collected&&h.y>t&&h.y<b);
   s.bats=s.bats.filter(bt=>bt.state!=='idle'||(bt.wy>t-H&&bt.wy<b+H));
-  s.archers=s.archers.filter(a=>a.wy>t-H*1.5&&a.wy<b+H*1.5);
-  s.arrows=s.arrows.filter(ar=>!ar.dead&&ar.wy>t-H&&ar.wy<b+H);
 }
 
 function addFloat(x,sy,text,color){floats.push({x,y:sy,vy:-1.4,life:55,text,color:color||'#ffdd00'});}
@@ -358,114 +347,7 @@ function updateBats(s){
   }
 }
 
-// ── Spikes ────────────────────────────────────────────────────────────────────
-function genSpikes(px,pw,id){
-  // Deterministic spike clusters per platform
-  const spikes=[];
-  const count=Math.floor(hash2(id,77)*3); // 0-2 clusters
-  for(let c=0;c<count;c++){
-    const cx=px+8+hash2(id,c+100)*(pw-16);
-    // 2-3 spikes per cluster
-    const n=2+Math.floor(hash2(id,c+200)*2);
-    for(let i=0;i<n;i++){
-      spikes.push({x:cx+(i-(n-1)/2)*7});
-    }
-  }
-  return spikes;
-}
-
-function checkSpikes(s){
-  if(s.pl.hurtTimer>0) return;
-  const pl=s.pl;
-  const plL=pl.x-pl.w/2,plR=pl.x+pl.w/2,plB=pl.y+pl.h/2;
-  for(const p of s.plats){
-    if(!p.spikes||!p.spikes.length) continue;
-    const sy=p.y; // spike tips sit on top of platform
-    if(plB<sy-8||plB>sy+4) continue; // only near platform top
-    for(const sp of p.spikes){
-      if(plR>sp.x-3&&plL<sp.x+3){
-        takeDamage(s,1,'🩸 SPIKE!');
-        // Bounce player sideways away from spike
-        pl.vx=(pl.x<sp.x?-1:1)*4;
-        pl.vy=-3;
-        return;
-      }
-    }
-  }
-}
-
-// ── Skeleton Archers ──────────────────────────────────────────────────────────
-const ARCHER_SHOOT_INTERVAL=300; // ticks (~5 sec at 60fps)
-const ARROW_SPEED=4.5;
-
-function mkArcher(cam,plY){
-  // Place in left or right wall, or embed in background
-  const side=Math.random()<0.5?'left':'right';
-  const x=side==='left'?WALL-4:W-WALL+4;
-  const wy=cam+(Math.random()-0.3)*H*1.5;
-  return{x,wy,side,shootTimer:Math.floor(Math.random()*ARCHER_SHOOT_INTERVAL),
-    frame:0,alive:true};
-}
-
-function hasLOS(s,ax,awy,px,py){
-  // Cast ray in steps, check if any platform blocks it
-  const dx=px-ax,dy=py-awy,steps=40;
-  for(let i=1;i<steps;i++){
-    const rx=ax+dx*(i/steps), ry=awy+dy*(i/steps);
-    for(const p of s.plats){
-      if(rx>p.x&&rx<p.x+p.w&&ry>p.y&&ry<p.y+p.h) return false;
-    }
-  }
-  return true;
-}
-
-function updateArchers(s){
-  const pl=s.pl;
-  for(const ar of s.archers){
-    ar.frame++;
-    ar.shootTimer--;
-    if(ar.shootTimer<=0){
-      ar.shootTimer=ARCHER_SHOOT_INTERVAL;
-      // Only shoot if player is on screen and visible
-      const asy=ar.wy-s.cam;
-      if(asy>-80&&asy<H+80&&hasLOS(s,ar.x,ar.wy,pl.x,pl.y)){
-        // Aim: compute initial velocity to arc to player
-        const dx=pl.x-ar.x,dy=pl.y-ar.wy;
-        const dist=Math.sqrt(dx*dx+dy*dy)||1;
-        const spd=ARROW_SPEED;
-        // Give a slight upward arc so it travels in a parabola
-        const vx=(dx/dist)*spd;
-        const vy=(dy/dist)*spd - Math.abs(dx/dist)*1.5;
-        s.arrows.push({x:ar.x,wy:ar.wy,vx,vy,dead:false,fromArcher:ar});
-      }
-    }
-  }
-}
-
-function updateArrows(s){
-  const pl=s.pl;
-  const grav=0.18; // lighter gravity than player for longer arcs
-  for(const ar of s.arrows){
-    if(ar.dead) continue;
-    ar.wy+=ar.vy; ar.x+=ar.vx; ar.vy+=grav;
-    // Platform collision — stop arrow
-    let hit=false;
-    for(const p of s.plats){
-      if(ar.x>p.x&&ar.x<p.x+p.w&&ar.wy>p.y&&ar.wy<p.y+p.h){hit=true;break;}
-    }
-    if(hit){ar.dead=true;continue;}
-    // Wall collision
-    if(ar.x<WALL||ar.x>W-WALL){ar.dead=true;continue;}
-    // Player hit
-    const dx=ar.x-pl.x,dy=ar.wy-pl.y;
-    if(Math.sqrt(dx*dx+dy*dy)<12){
-      ar.dead=true;
-      takeDamage(s,1,'🏹 ARROW!');
-    }
-  }
-}
-
-// ── Update ─────────────────────────────────────────────────────────────────────
+// ── Update ────────────────────────────────────────────────────────────────────
 function update(s){
   s.tick++;
   const pl=s.pl,prevY=pl.y,prevX=pl.x;
@@ -549,9 +431,6 @@ function update(s){
   }
 
   updateBats(s);
-  checkSpikes(s);
-  updateArchers(s);
-  updateArrows(s);
   s.cam+=(pl.y-H*.4-s.cam)*.07;
   s.score=Math.floor(-pl.y/10);
   if(s.score>best) best=s.score;
@@ -734,77 +613,6 @@ function drawPlatform(p){
     for(let i=20;i<p.w;i+=20) ctx.fillRect((p.x+i)|0,sy,2,p.h);
     ctx.fillStyle='rgba(0,0,0,0.25)';ctx.fillRect((p.x+2)|0,(sy+p.h)|0,p.w|0,4);
     if(p.torch) drawTorch(p.x+p.w/2,sy-2);
-  }
-}
-
-function drawSpikes(p){
-  if(!p.spikes||!p.spikes.length) return;
-  const sy=(p.y-S.cam)|0;
-  for(const sp of p.spikes){
-    const sx=sp.x|0;
-    ctx.fillStyle='#888';
-    // Three-pronged spike cluster pixel art
-    ctx.fillRect(sx-1,sy-10,2,10);   // center spike
-    ctx.fillRect(sx-5,sy-7,2,7);     // left spike
-    ctx.fillRect(sx+3,sy-7,2,7);     // right spike
-    ctx.fillStyle='#aaa';
-    ctx.fillRect(sx,sy-10,1,3);      // highlight center tip
-    ctx.fillRect(sx-4,sy-7,1,3);     // highlight left tip
-    ctx.fillRect(sx+4,sy-7,1,3);     // highlight right tip
-    // Dark base
-    ctx.fillStyle='#555';
-    ctx.fillRect(sx-5,sy-1,10,1);
-  }
-}
-
-function drawArcher(ar){
-  const sy=(ar.wy-S.cam)|0;
-  if(sy<-40||sy>H+40) return;
-  const flip=ar.side==='right'?-1:1;
-  // Body
-  ctx.fillStyle='#c8c8c8';
-  ctx.fillRect((ar.x-3*flip)|0,sy-18,6,8);   // torso
-  // Skull
-  ctx.fillStyle='#ddd';
-  ctx.fillRect((ar.x-3*flip)|0,sy-26,6,7);
-  ctx.fillStyle='#000';
-  ctx.fillRect((ar.x-2*flip)|0,sy-24,2,2);   // eye socket L
-  ctx.fillRect((ar.x+1*flip)|0,sy-24,2,2);   // eye socket R... wait, just use fixed
-  // Legs
-  ctx.fillStyle='#aaa';
-  ctx.fillRect((ar.x-3*flip)|0,sy-10,2,10);
-  ctx.fillRect((ar.x+1*flip)|0,sy-10,2,10);
-  // Bow arm reaching out
-  ctx.fillStyle='#8B4513';
-  ctx.fillRect((ar.x-flip*8)|0,sy-16,8*flip,2); // bow stick
-  ctx.fillStyle='#c8a055';
-  ctx.fillRect((ar.x-flip*8)|0,sy-20,1,10);      // bowstring
-  // Arrow nocked
-  if(ar.shootTimer>ARCHER_SHOOT_INTERVAL-30){
-    ctx.fillStyle='#cc8833';
-    ctx.fillRect((ar.x-flip*8)|0,sy-18,8*flip,1);
-    ctx.fillStyle='#888';
-    ctx.fillRect((ar.x+flip*2)|0,sy-19,2,2);     // arrowhead
-  }
-  // Subtle glow
-  ctx.fillStyle='rgba(255,220,150,0.08)';
-  ctx.beginPath();ctx.arc(ar.x,sy-13,18,0,Math.PI*2);ctx.fill();
-}
-
-function drawArrows(){
-  ctx.fillStyle='#cc8833';
-  for(const ar of S.arrows){
-    if(ar.dead) continue;
-    const sy=(ar.wy-S.cam)|0;
-    // Rotate arrow sprite to follow trajectory angle
-    const angle=Math.atan2(ar.vy,ar.vx);
-    ctx.save();
-    ctx.translate(ar.x|0,sy);
-    ctx.rotate(angle);
-    ctx.fillStyle='#cc8833';ctx.fillRect(-8,-1,16,2);  // shaft
-    ctx.fillStyle='#888';ctx.fillRect(6,-2,4,4);        // head
-    ctx.fillStyle='#884400';ctx.fillRect(-8,-2,3,4);    // fletching
-    ctx.restore();
   }
 }
 
@@ -1005,9 +813,7 @@ function frame(){
   drawSky();
   drawCastleWall();
   for(const bt of S.bats) drawBat(bt);
-  for(const p of S.plats){drawPlatform(p);drawSpikes(p);}
-  for(const ar of S.archers) drawArcher(ar);
-  drawArrows();
+  for(const p of S.plats) drawPlatform(p);
   for(const c of S.coins) drawGold(c);
   for(const h of S.hearts) drawHeart(h);
   drawKnight();
