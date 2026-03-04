@@ -1011,35 +1011,25 @@ function drawSling(){
 
   ctx.globalAlpha=canFire?1:0.3;
   drawSegs.forEach((seg,si)=>{
-    const col=BOUNCE_COLORS[si%BOUNCE_COLORS.length];
+    const col=BOUNCE_COLORS[0];
     const n=seg.dots.length;
     seg.dots.forEach((d,di)=>{
       const t=di/Math.max(n-1,1);
       const fade=1-t*t;
       const r=Math.max(0.8,3*(1-t*0.5));
-      // Each successive segment fades out a little more to convey uncertainty
       const segAlpha=Math.pow(0.82,si);
       const alpha=fade*segAlpha;
       if(alpha<0.02) return;
       ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
       ctx.beginPath();ctx.arc(d.x,d.y-camY,r,0,Math.PI*2);ctx.fill();
     });
-    // Draw an X marker at each bounce point, colored to match the next segment
+    // X marker at each bounce point
     if(seg.bounced&&si<drawSegs.length-1&&seg.dots.length>0){
       const last=seg.dots[seg.dots.length-1];
       const lsy=last.y-camY;
-      const nc=BOUNCE_COLORS[(si+1)%BOUNCE_COLORS.length];
-      ctx.strokeStyle=`rgba(${nc[0]},${nc[1]},${nc[2]},0.9)`;ctx.lineWidth=1.5;
+      ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},0.9)`;ctx.lineWidth=1.5;
       ctx.beginPath();ctx.moveTo(last.x-4,lsy-4);ctx.lineTo(last.x+4,lsy+4);ctx.stroke();
       ctx.beginPath();ctx.moveTo(last.x+4,lsy-4);ctx.lineTo(last.x-4,lsy+4);ctx.stroke();
-    }
-    // Draw a small rest marker (circle) at the end of the final segment if
-    // the simulation stopped early due to the player coming to rest.
-    if(si===drawSegs.length-1&&!seg.bounced&&seg.dots.length>0){
-      const last=seg.dots[seg.dots.length-1];
-      const lsy=last.y-camY;
-      ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},0.7)`;ctx.lineWidth=1.5;
-      ctx.beginPath();ctx.arc(last.x,lsy,5,0,Math.PI*2);ctx.stroke();
     }
   });
   ctx.globalAlpha=1;
