@@ -121,7 +121,7 @@ const SAVE_KEY='castle_climber_save_v2';
 // ── Upgrades ─────────────────────────────────────────────────────────────────
 const UPGRADES=[
   {id:'power',    name:'TREBUCHET ARM',    desc:'Mightier launch force',                 icon:'⚔', base:15,  inc:0.9,   baseCost:24,  costMult:1.65},
-  {id:'preview',  name:'WIZARD SIGHT',     desc:'Longer trajectory preview arc',         icon:'🔮',base:4,   inc:3,     baseCost:16,  costMult:1.3},
+  {id:'preview',  name:'WIZARD SIGHT',     desc:'Longer trajectory preview arc',         icon:'🔮',base:4,   inc:1.5,   baseCost:16,  costMult:1.3},
   {id:'friction', name:'IRON SABATONS',    desc:'Better grip upon the stonework',        icon:'🛡', base:0.82,inc:-0.04, baseCost:20,  costMult:1.35},
   {id:'gravity',  name:'FEATHERFALL RUNE', desc:'Enchantment lightens thy burden',       icon:'✨',base:0.40,inc:-0.02, baseCost:32,  costMult:1.5,  maxLvl:15},
   {id:'bounce',   name:'RUNED GAUNTLETS',  desc:'Rebound harder off castle walls',       icon:'💎',base:0.6, inc:0.08,  baseCost:16,  costMult:1.45},
@@ -637,7 +637,17 @@ function simTrajectory(sx,sy,vx0,vy0,totalSteps){
         if(tx+hw<=p.x||tx-hw>=pR||ty+hh<=p.y||ty-hh>=pB) continue;
         const fromTop=(pty+hh)<=p.y,fromBot=(pty-hh)>=pB;
         const fromLeft=(ptx+hw)<=p.x,fromRight=(ptx-hw)>=pR;
-        if(fromTop){ty=p.y-hh;tvy=-Math.abs(tvy)*0.5;tvx*=pf;hit=true;}
+        if(fromTop){
+          ty=p.y-hh;tvx*=pf;
+          // Early exit: player has come to rest on a platform — no point
+          // drawing further since the trajectory ends here in practice.
+          if(Math.abs(tvx)<0.8&&Math.abs(tvy)<1.5){
+            segs[segs.length-1].dots.push({x:tx,y:ty});
+            if(segs[segs.length-1].dots.length===0) segs.pop();
+            return segs;
+          }
+          tvy=-Math.abs(tvy)*0.5;hit=true;
+        }
         else if(fromBot){ty=pB+hh;tvy=Math.abs(tvy)*0.3;hit=true;}
         else if(fromLeft){tx=p.x-hw;tvx=-Math.abs(tvx)*bc;hit=true;}
         else if(fromRight){tx=pR+hw;tvx=Math.abs(tvx)*bc;hit=true;}
@@ -988,30 +998,48 @@ function drawSling(){
   ctx.beginPath();ctx.moveTo(drag.sx,drag.sy);ctx.lineTo(drag.cx,drag.cy);ctx.stroke();
   ctx.setLineDash([]);ctx.restore();
 
-  const totalSteps=Math.floor(upgVal('preview')*2.6);
+  // Divide by power so weak shots get more steps and cover the same visual
+  // distance as strong ones — preview length stays constant at all power levels.
+  const totalSteps=Math.floor(upgVal('preview')*3/Math.max(pw,0.15));
   const segs=simTrajectory(ps.x,ps.y,vx0,vy0,totalSteps);
 
-  const drawSegs=segs.slice(0,2);
+  // Level 0 = initial arc only (1 seg), level N = N rebounds (N+1 segs).
+  // If the step budget runs out before reaching the Nth rebound, the segs
+  // array will simply be shorter — length naturally takes priority over count.
+  const maxSegs=upgLevels['preview']+1;
+  const drawSegs=segs.slice(0,maxSegs);
+
   ctx.globalAlpha=canFire?1:0.3;
   drawSegs.forEach((seg,si)=>{
-    const col=BOUNCE_COLORS[0];
+    const col=BOUNCE_COLORS[si%BOUNCE_COLORS.length];
     const n=seg.dots.length;
     seg.dots.forEach((d,di)=>{
       const t=di/Math.max(n-1,1);
       const fade=1-t*t;
       const r=Math.max(0.8,3*(1-t*0.5));
-      const alpha=fade*(si===0?1:0.85);
+      // Each successive segment fades out a little more to convey uncertainty
+      const segAlpha=Math.pow(0.82,si);
+      const alpha=fade*segAlpha;
       if(alpha<0.02) return;
       ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
       ctx.beginPath();ctx.arc(d.x,d.y-camY,r,0,Math.PI*2);ctx.fill();
     });
+    // Draw an X marker at each bounce point, colored to match the next segment
     if(seg.bounced&&si<drawSegs.length-1&&seg.dots.length>0){
       const last=seg.dots[seg.dots.length-1];
       const lsy=last.y-camY;
-      const nc=BOUNCE_COLORS[0];
+      const nc=BOUNCE_COLORS[(si+1)%BOUNCE_COLORS.length];
       ctx.strokeStyle=`rgba(${nc[0]},${nc[1]},${nc[2]},0.9)`;ctx.lineWidth=1.5;
       ctx.beginPath();ctx.moveTo(last.x-4,lsy-4);ctx.lineTo(last.x+4,lsy+4);ctx.stroke();
       ctx.beginPath();ctx.moveTo(last.x+4,lsy-4);ctx.lineTo(last.x-4,lsy+4);ctx.stroke();
+    }
+    // Draw a small rest marker (circle) at the end of the final segment if
+    // the simulation stopped early due to the player coming to rest.
+    if(si===drawSegs.length-1&&!seg.bounced&&seg.dots.length>0){
+      const last=seg.dots[seg.dots.length-1];
+      const lsy=last.y-camY;
+      ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},0.7)`;ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.arc(last.x,lsy,5,0,Math.PI*2);ctx.stroke();
     }
   });
   ctx.globalAlpha=1;
