@@ -120,21 +120,22 @@ const SAVE_KEY='castle_climber_save_v2';
 
 // ── Upgrades ─────────────────────────────────────────────────────────────────
 const UPGRADES=[
-  {id:'power',    name:'TREBUCHET ARM',    desc:'Mightier launch force',                 icon:'⚔', base:15,  inc:0.9,   baseCost:48,  costMult:1.65},
-  {id:'preview',  name:'WIZARD SIGHT',     desc:'Longer trajectory preview arc',         icon:'🔮',base:4,   inc:3,     baseCost:32,  costMult:1.3},
-  {id:'friction', name:'IRON SABATONS',    desc:'Better grip upon the stonework',        icon:'🛡', base:0.82,inc:-0.04, baseCost:40,  costMult:1.35},
-  {id:'gravity',  name:'FEATHERFALL RUNE', desc:'Enchantment lightens thy burden',       icon:'✨',base:0.40,inc:-0.02, baseCost:64,  costMult:1.5,  maxLvl:15},
-  {id:'bounce',   name:'RUNED GAUNTLETS',  desc:'Rebound harder off castle walls',       icon:'💎',base:0.6, inc:0.08,  baseCost:32,  costMult:1.45},
-  {id:'coinmag',  name:'GILDED AURA',      desc:'Gold is drawn to thee from afar',       icon:'⚜', base:14,  inc:6,     baseCost:24,  costMult:1.4},
-  {id:'coinrate', name:'FORTUNE BLESSING', desc:'More gold coins float through the castle',icon:'🪙',base:1.0, inc:0.4,   baseCost:40,  costMult:1.55},
-  {id:'coyote',   name:"SQUIRE'S GRACE",   desc:'Extra moments to leap from ledges',     icon:'🐾',base:3,   inc:4,     baseCost:48,  costMult:1.35},
-  {id:'airbrake', name:'CAPE OF CONTROL',  desc:'Thy cloak steadies thine arc',          icon:'🧣',base:1.0, inc:-0.03, baseCost:32,  costMult:1.4},
-  {id:'coinval',  name:'ROYAL TITHE',      desc:"Each coin bears the king's bounty",     icon:'👑',base:2,   inc:1,     baseCost:80,  costMult:1.75},
-  {id:'maxhp',    name:'VITALITY OATH',    desc:'Gain an extra heart of health',         icon:'❤️',base:4,   inc:1,     baseCost:64,  costMult:1.55},
-  {id:'fallres',  name:'IRONFLESH WARD',   desc:'Reduces fall damage taken',             icon:'🪨',base:0,   inc:0.15,  baseCost:44,  costMult:1.35},
-  {id:'airjumps', name:'WINGED BOOTS',     desc:'Extra mid-air launches per flight',     icon:'🦅',base:0,   inc:1,     baseCost:96,  costMult:1.9,  maxLvl:5},
-  {id:'batradius',name:'WARDING SIGIL',    desc:'Bats cannot agro within a wider radius', icon:'🔯',base:80,  inc:25,    baseCost:36,  costMult:1.3},
-  {id:'heartrate',name:'BLESSED GROUNDS',  desc:'Hearts of healing appear more often',   icon:'💖',base:0.04,inc:0.025, baseCost:48,  costMult:1.4},
+  {id:'power',    name:'TREBUCHET ARM',    desc:'Mightier launch force',                 icon:'⚔', base:15,  inc:0.9,   baseCost:24,  costMult:1.65},
+  {id:'preview',  name:'WIZARD SIGHT',     desc:'Longer trajectory preview arc',         icon:'🔮',base:4,   inc:3,     baseCost:16,  costMult:1.3},
+  {id:'friction', name:'IRON SABATONS',    desc:'Better grip upon the stonework',        icon:'🛡', base:0.82,inc:-0.04, baseCost:20,  costMult:1.35},
+  {id:'gravity',  name:'FEATHERFALL RUNE', desc:'Enchantment lightens thy burden',       icon:'✨',base:0.40,inc:-0.02, baseCost:32,  costMult:1.5,  maxLvl:15},
+  {id:'bounce',   name:'RUNED GAUNTLETS',  desc:'Rebound harder off castle walls',       icon:'💎',base:0.6, inc:0.08,  baseCost:16,  costMult:1.45},
+  {id:'coinmag',  name:'GILDED AURA',      desc:'Gold is drawn to thee from afar',       icon:'⚜', base:14,  inc:6,     baseCost:12,  costMult:1.4},
+  {id:'coinrate', name:'FORTUNE BLESSING', desc:'More gold coins float through the castle',icon:'🪙',base:1.0, inc:0.4,   baseCost:20,  costMult:1.55},
+  {id:'coyote',   name:"SQUIRE'S GRACE",   desc:'Extra moments to leap from ledges',     icon:'🐾',base:3,   inc:4,     baseCost:24,  costMult:1.35},
+  {id:'airbrake', name:'CAPE OF CONTROL',  desc:'Thy cloak steadies thine arc',          icon:'🧣',base:1.0, inc:-0.03, baseCost:16,  costMult:1.4},
+  {id:'coinval',  name:'ROYAL TITHE',      desc:"Each coin bears the king's bounty",     icon:'👑',base:1,   inc:1,     baseCost:40,  costMult:1.75},
+  {id:'maxhp',    name:'VITALITY OATH',    desc:'Gain an extra heart of health',         icon:'❤️',base:4,   inc:1,     baseCost:32,  costMult:1.55},
+  {id:'fallres',  name:'IRONFLESH WARD',   desc:'Reduces fall damage taken',             icon:'🪨',base:0,   inc:0.15,  baseCost:22,  costMult:1.35},
+  {id:'airjumps', name:'WINGED BOOTS',     desc:'Extra mid-air launches per flight',     icon:'🦅',base:0,   inc:1,     baseCost:48,  costMult:1.9,  maxLvl:5},
+  {id:'batradius',name:'WARDING SIGIL',    desc:'Bats cannot agro within a wider radius', icon:'🔯',base:80,  inc:25,    baseCost:18,  costMult:1.3},
+  {id:'heartrate',name:'BLESSED GROUNDS',  desc:'Hearts of healing appear more often',   icon:'💖',base:0.04,inc:0.025, baseCost:24,  costMult:1.4},
+  {id:'sporeres', name:'SPORE WARD',       desc:'Thy armor filters the toxic miasma longer', icon:'🍄',base:70,  inc:25,    baseCost:20,  costMult:1.4},
 ];
 
 let upgLevels={};
@@ -157,6 +158,12 @@ function gravVal(){return Math.max(0.04, upgVal('gravity'));}
 function batDifficultyScale(score){return 1 + Math.min(2.5, Math.abs(score) / 4000);}
 function batAgroRadius(){return Math.min(upgVal('batradius'), H*0.45);}
 function heartSpawnRate(){return upgVal('heartrate');}
+function sporeToleranceVal(){return upgVal('sporeres');}
+
+// Mushroom spawn density scales with depth, starting mild and peaking around floor 4500.
+const MUSH_START = 150;
+const MUSH_FULL  = 4500;
+const MUSH_MAX_DENSITY = 0.38;
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 function saveGame(s){
@@ -236,9 +243,9 @@ function mkS(savedPos){
   const s={
     pl:{x:sx,y:sy,vx:0,vy:0,w:18,h:24,onG:false,coyote:0,
         hp:shp,maxHp:hp,hurtTimer:0,fallVy:0,damageFlash:0,
-        airJumpsLeft:maxAirJumps()},
+        airJumpsLeft:maxAirJumps(),sporeExposure:0},
     cam:sy-H*.38,
-    plats:[],coins:[],
+    plats:[],coins:[],mushrooms:[],
     collectedCoins:new Set(),
     collectedHearts:new Set(),
     score:Math.floor(-sy/10),session_coins:0,
@@ -319,6 +326,25 @@ function tryPlaceHeart(s,wy,band){
   s.hearts.push({x:wx,y:cy,collected:false,bob:hash2(band,52)*Math.PI*2,id:hid});
 }
 
+function tryPlaceMushroom(s, p){
+  const absScore = Math.abs(p.y) / 10;
+  if(absScore < MUSH_START) return;
+  if(s.mushrooms.some(m=>m.platId===p.id)) return;
+  const density = Math.min(1, (absScore - MUSH_START) / (MUSH_FULL - MUSH_START));
+  if(hash2(p.id*53+7, 99) > density * MUSH_MAX_DENSITY) return;
+  // Position deterministically along the platform, away from edges
+  const mx = p.x + 10 + hash2(p.id, 88) * (p.w - 20);
+  // Stagger initial puff timers so mushrooms don't all puff at once on entry
+  const initDelay = 80 + hash2(p.id, 91) * 220;
+  s.mushrooms.push({
+    x:mx, y:p.y,       // y = platform top world-Y
+    platId:p.id,
+    puffTimer:initDelay,
+    cloud:null,        // null or {timer, maxTimer} when active
+    bob:hash2(p.id,92)*Math.PI*2,
+  });
+}
+
 function addP(s,wy){
   const id=platId(wy);
   if(s.plats.some(p=>p.id===id)) return;
@@ -326,7 +352,9 @@ function addP(s,wy){
   const rng1=hash2(id,1),rng2=hash2(id,2),rng3=hash2(id,3),rng4=hash2(id,4);
   const w=52+rng1*84, x=WALL+6+rng2*(avail-w-12);
   const icy=rng3<0.18, torch=!icy&&rng4<0.3;
-  s.plats.push({x,y:wy,w,h:14,icy,torch,id});
+  const p={x,y:wy,w,h:14,icy,torch,id};
+  s.plats.push(p);
+  tryPlaceMushroom(s, p);
 }
 
 function cull(s){
@@ -339,12 +367,56 @@ function cull(s){
   // Previously only idle bats were culled, letting agro/diving/retreating bats
   // accumulate forever and degrade performance over long runs.
   s.bats=s.bats.filter(bt=>bt.wy>t-H*1.5&&bt.wy<b+H*1.5);
+  s.mushrooms=s.mushrooms.filter(m=>m.y>t&&m.y<b);
 }
 
 function addFloat(x,sy,text,color){floats.push({x,y:sy,vy:-1.4,life:55,text,color:color||'#ffdd00'});}
 
 const FALL_THRESH=22;
 const FALL_SEVERE=34;
+
+// ── Mushrooms ─────────────────────────────────────────────────────────────────
+const CLOUD_RADIUS   = 30;   // px — area of spore cloud
+const CLOUD_DURATION = 160;  // ticks cloud stays active
+const PUFF_MIN       = 200;  // ticks minimum between puffs
+const PUFF_RANGE     = 220;  // random range added on top
+
+function updateMushrooms(s){
+  const pl = s.pl;
+  const tolerance = sporeToleranceVal();
+  let inCloud = false;
+
+  for(const m of s.mushrooms){
+    m.bob += 0.03;
+    if(m.cloud){
+      m.cloud.timer--;
+      if(m.cloud.timer <= 0) m.cloud = null;
+    } else {
+      m.puffTimer--;
+      if(m.puffTimer <= 0){
+        m.cloud = {timer:CLOUD_DURATION, maxTimer:CLOUD_DURATION};
+        m.puffTimer = PUFF_MIN + Math.random()*PUFF_RANGE;
+      }
+    }
+
+    // Check if player is inside this cloud
+    if(m.cloud){
+      const dx = pl.x - m.x, dy = pl.y - m.y;
+      if(Math.sqrt(dx*dx + dy*dy) < CLOUD_RADIUS + 8) inCloud = true;
+    }
+  }
+
+  if(inCloud){
+    pl.sporeExposure++;
+    if(pl.sporeExposure >= tolerance){
+      takeDamage(s, 1, '☠ SPORES!');
+      pl.sporeExposure = 0;
+    }
+  } else {
+    // Drain exposure quickly once out of the cloud
+    pl.sporeExposure = Math.max(0, pl.sporeExposure - 3);
+  }
+}
 
 // ── Bats ──────────────────────────────────────────────────────────────────────
 const BAT_AGRO_RATE=0.025,BAT_AGRO_PERIOD=360,BAT_DIVE_SPEED=3.5,BAT_IDLE_SPEED=0.8;
@@ -486,6 +558,7 @@ function update(s){
     }
   }
 
+  updateMushrooms(s);
   updateBats(s);
   s.cam+=(pl.y-H*.4-s.cam)*.07;
   s.score=Math.floor(-pl.y/10);
@@ -665,12 +738,14 @@ function drawSpikesOnPlat(p) {
 
   const absScore  = Math.abs(p.y) / 10;
   const density   = Math.min(1, (absScore - SPIKE_START) / (SPIKE_FULL - SPIKE_START));
-  const glowAlpha = 0.04 + density * 0.10;
-  ctx.fillStyle = `rgba(255,40,0,${glowAlpha})`;
-  ctx.fillRect(p.x|0, (sy - 10)|0, p.w|0, 10);
+  const glowAlpha = 0.08 + density * 0.14;
 
   for (const wx of spikes) {
     const x = wx|0;
+
+    // Per-spike glow — only appears beneath each individual spike, not the whole platform
+    ctx.fillStyle = `rgba(255,40,0,${glowAlpha})`;
+    ctx.fillRect(x - 5, (sy - 10)|0, 10, 10);
 
     ctx.fillStyle = '#1a1218';
     ctx.fillRect(x,     sy - 10, 2, 2);
@@ -704,6 +779,91 @@ function drawSpikesOnPlat(p) {
     ctx.fillStyle = `rgba(${bloodR},0,0,${bloodA})`;
     ctx.fillRect(x - 1, sy - 6, 1, 4);
     ctx.fillRect(x + 1, sy - 4, 1, 3);
+  }
+}
+
+function drawMushrooms(){
+  for(const m of S.mushrooms){
+    const sy = (m.y - S.cam)|0;
+    if(sy < -60 || sy > H+20) continue;
+    const mx = m.x|0;
+
+    // ── Spore cloud ──────────────────────────────────────────────────────────
+    if(m.cloud){
+      const t = m.cloud.timer / m.cloud.maxTimer; // 1→0 as cloud fades
+      const pulse = 0.7 + 0.3*Math.sin(S.tick*0.18);
+      const outerR = CLOUD_RADIUS + 6*Math.sin(S.tick*0.09);
+
+      // Layered radial gradients give the cloud a lumpy, volumetric feel
+      const g1 = ctx.createRadialGradient(mx, sy-8, 0, mx, sy-8, outerR);
+      g1.addColorStop(0, `rgba(140,200,60,${0.38*t*pulse})`);
+      g1.addColorStop(0.5,`rgba(100,170,30,${0.22*t*pulse})`);
+      g1.addColorStop(1,  `rgba(60,120,10,0)`);
+      ctx.fillStyle = g1;
+      ctx.beginPath(); ctx.arc(mx, sy-8, outerR, 0, Math.PI*2); ctx.fill();
+
+      // Secondary lobe offset slightly for a less-perfect-circle feel
+      const g2 = ctx.createRadialGradient(mx+8, sy-14, 0, mx+8, sy-14, outerR*0.65);
+      g2.addColorStop(0, `rgba(160,210,80,${0.22*t*pulse})`);
+      g2.addColorStop(1,  `rgba(80,150,20,0)`);
+      ctx.fillStyle = g2;
+      ctx.beginPath(); ctx.arc(mx+8, sy-14, outerR*0.65, 0, Math.PI*2); ctx.fill();
+
+      // Drifting spore particles
+      for(let i=0;i<5;i++){
+        const angle = (S.tick*0.04 + i*1.26);
+        const r = (12 + i*4) * t;
+        const px2 = mx + Math.cos(angle)*r;
+        const py2 = (sy-8) + Math.sin(angle)*r*0.6 - (1-t)*8;
+        ctx.fillStyle=`rgba(180,230,80,${0.5*t})`;
+        ctx.fillRect(px2|0, py2|0, 2, 2);
+      }
+    }
+
+    // ── Warning glow when puff is imminent ───────────────────────────────────
+    if(!m.cloud && m.puffTimer < 90){
+      const warn = 1 - m.puffTimer/90;
+      const wPulse = 0.5 + 0.5*Math.sin(S.tick*0.25);
+      ctx.fillStyle = `rgba(120,200,40,${warn*0.18*wPulse})`;
+      ctx.beginPath(); ctx.arc(mx, sy-4, 20, 0, Math.PI*2); ctx.fill();
+    }
+
+    // ── Pixel-art mushroom body ───────────────────────────────────────────────
+    // Stem
+    ctx.fillStyle = '#c8b89a';
+    ctx.fillRect(mx-3, sy-7, 6, 7);
+    ctx.fillStyle = '#ede0c8';
+    ctx.fillRect(mx-2, sy-6, 2, 5);
+    ctx.fillStyle = '#a89070';
+    ctx.fillRect(mx+1, sy-7, 2, 7);
+
+    // Cap shadow
+    ctx.fillStyle = '#1a1a10';
+    ctx.fillRect(mx-7, sy-14, 14, 8);
+
+    // Cap body — colour shifts slightly when warning
+    const capR = (!m.cloud && m.puffTimer < 90)
+      ? (120 + Math.floor(80*(1-m.puffTimer/90)))|0 : 180;
+    ctx.fillStyle = `rgb(${capR},48,20)`;
+    ctx.fillRect(mx-6, sy-15, 12, 8);
+    ctx.fillRect(mx-4, sy-17, 8,  2);
+    ctx.fillRect(mx-2, sy-18, 4,  1);
+
+    // Cap highlight (left face)
+    ctx.fillStyle = `rgb(${Math.min(255,capR+60)},90,50)`;
+    ctx.fillRect(mx-5, sy-15, 4, 3);
+    ctx.fillRect(mx-3, sy-16, 2, 1);
+
+    // White spots
+    ctx.fillStyle = '#f0f0e8';
+    ctx.fillRect(mx-4, sy-14, 3, 3);
+    ctx.fillRect(mx+2, sy-13, 2, 2);
+    ctx.fillRect(mx-1, sy-16, 2, 2);
+
+    // Spot shading
+    ctx.fillStyle = '#c8c8b8';
+    ctx.fillRect(mx-3, sy-12, 1, 1);
+    ctx.fillRect(mx+3, sy-12, 1, 1);
   }
 }
 
@@ -901,6 +1061,7 @@ function frame(){
   }
   for(const c of S.coins) drawGold(c);
   for(const h of S.hearts) drawHeart(h);
+  drawMushrooms();
   drawKnight();
   drawWalls();
   drawSling();
