@@ -148,19 +148,13 @@ function maxHP(){return upgVal('maxhp')|0;}
 function maxAirJumps(){return upgVal('airjumps')|0;}
 function frictionVal(){return Math.max(0.05, upgVal('friction'));}
 function airbrakeVal(){return Math.max(0.05, upgVal('airbrake'));}
-// Bounce clamped at 0.92 — values >= 1.0 would accelerate the player off walls
-// instead of dampening, breaking physics entirely at level 6+.
 function bounceVal(){return Math.min(0.92, upgVal('bounce'));}
-// FIX 1: Gravity clamped to a minimum so it can never invert and send the player flying upward.
 function gravVal(){return Math.max(0.04, upgVal('gravity'));}
-// Scales bat speed and aggro with depth — bats get meaningfully harder past floor 1000
-// so high-level builds still require skill rather than just stat-checking encounters.
 function batDifficultyScale(score){return 1 + Math.min(2.5, Math.abs(score) / 4000);}
 function batAgroRadius(){return Math.min(upgVal('batradius'), H*0.45);}
 function heartSpawnRate(){return upgVal('heartrate');}
 function sporeToleranceVal(){return upgVal('sporeres');}
 
-// Mushroom spawn density scales with depth, starting mild and peaking around floor 4500.
 const MUSH_START = 150;
 const MUSH_FULL  = 4500;
 const MUSH_MAX_DENSITY = 0.38;
@@ -187,6 +181,49 @@ let S,drag=null,floats=[],paused=false,saveTimer=0;
 
 function hashY(y){let h=Math.sin(y*127.1+311.7)*43758.5453;return h-Math.floor(h);}
 function hash2(a,b){let h=Math.sin(a*127.1+b*311.7+92.3)*43758.5453;return h-Math.floor(h);}
+
+// ── PHASE 2: Tower as a world object ─────────────────────────────────────────
+// Creates a tower data object. worldX is its left edge in world coords,
+// width is its total width, entryY is the world-Y where it was entered,
+// id is used for deterministic generation.
+function mkTower(worldX, width, entryY, id) {
+  const t = {
+    id,
+    worldX,
+    width,
+    wallThickness: WALL,
+    entryY,
+    breaks: [],
+  };
+  genTowerBreaks(t);
+  return t;
+}
+
+// Deterministically generate wall breaks for a tower.
+// The player moves upward (y decreases), so breaks are placed at
+// yTop/yBottom < entryY (higher up the tower).
+function genTowerBreaks(tower) {
+  const breakCount = 1 + Math.floor(hash2(tower.id * 13 + 7, 200) * 3); // 1–3 breaks
+  for (let i = 0; i < breakCount; i++) {
+    const side  = hash2(tower.id * 17 + i, 201) < 0.5 ? 'left' : 'right';
+    const yOff  = 300 + hash2(tower.id * 17 + i, 202) * 2000; // 300–2300 units above entry
+    const gapH  = 80  + hash2(tower.id * 17 + i, 203) * 60;   // 80–140 px gap
+    tower.breaks.push({
+      side,
+      yTop:    tower.entryY - yOff - gapH,  // more negative = higher up
+      yBottom: tower.entryY - yOff,
+    });
+  }
+}
+
+// Returns true if worldY (player centre) is inside a break on the given side.
+// Gap is large enough (≥80px) that checking centre is fine.
+function isInBreak(tower, side, worldY) {
+  for (const brk of tower.breaks) {
+    if (brk.side === side && worldY > brk.yTop && worldY < brk.yBottom) return true;
+  }
+  return false;
+}
 
 // ── Spike helpers ─────────────────────────────────────────────────────────────
 const SPIKE_START = 300;
@@ -240,11 +277,20 @@ function mkS(savedPos){
   const hp=maxHP();
   const sx=savedPos?savedPos.x:W/2,sy=savedPos?savedPos.y:0;
   const shp=savedPos?Math.min(savedPos.hp,hp):hp;
+
+  // PHASE 2: create the initial tower. worldX=0, width=W so it fills the
+  // full screen — identical to previous behaviour while providing the structure.
+  const initTower = mkTower(0, W, 0, 0);
+
   const s={
     pl:{x:sx,y:sy,vx:0,vy:0,w:18,h:24,onG:false,coyote:0,
         hp:shp,maxHp:hp,hurtTimer:0,fallVy:0,damageFlash:0,
         airJumpsLeft:maxAirJumps(),sporeExposure:0},
-    cam:sy-H*.38,
+    // PHASE 1: cam is now a {x, y} object. cam.x is locked to 0 in tower mode.
+    cam:{ x: 0, y: sy - H * 0.38 },
+    // PHASE 2: tower references
+    activeTower: initTower,
+    towers: [initTower],
     plats:[],coins:[],mushrooms:[],
     collectedCoins:new Set(),
     collectedHearts:new Set(),
@@ -269,13 +315,12 @@ function mkBat(wy,plY){
     tx:0,ty:0,dvx:0,dvy:0,hurtTimer:0};
 }
 
-// FIX 4: Removed `|| 0` fallback — platforms near y=0 were all colliding on id=0,
-// causing spawn-area platforms to silently vanish.
 function platId(wy){return Math.round(wy/10);}
 
 function gen(s){
   const margin=H*0.75;
-  const top=s.cam-margin, bot=s.cam+H+margin;
+  // PHASE 1: use s.cam.y
+  const top=s.cam.y-margin, bot=s.cam.y+H+margin;
 
   let mn=Infinity,mx=-Infinity;
   for(const p of s.plats){if(p.y<mn)mn=p.y;if(p.y>mx)mx=p.y;}
@@ -283,11 +328,8 @@ function gen(s){
   let y=mx; while(y<bot){y+=65+Math.random()*85;if(y<bot)addP(s,y);}
   y=mn;     while(y>top){y-=65+Math.random()*85;if(y>top)addP(s,y);}
 
-  // FIX 5: Coins and hearts use a tighter generation margin than the cull margin.
-  // This prevents the churn where items near the cull boundary are repeatedly
-  // created and immediately destroyed as the player oscillates in one area.
   const coinMargin=H*0.55;
-  const ctop=s.cam-coinMargin, cbot=s.cam+H+coinMargin;
+  const ctop=s.cam.y-coinMargin, cbot=s.cam.y+H+coinMargin;
   const COIN_BAND=80, HEART_BAND=320;
   const cb0=Math.floor(ctop/COIN_BAND), cb1=Math.ceil(cbot/COIN_BAND);
   for(let b=cb0;b<=cb1;b++) tryPlaceCoin(s,b*COIN_BAND,b);
@@ -295,7 +337,9 @@ function gen(s){
   for(let b=hb0;b<=hb1;b++) tryPlaceHeart(s,b*HEART_BAND,b);
 
   const idle=s.bats.filter(bt=>bt.state==='idle').length;
-  let add=8-idle; while(add-->0) s.bats.push(mkBat(s.cam+(Math.random()-.5)*H*2,s.pl.y));
+  let add=8-idle;
+  // PHASE 1: use s.cam.y
+  while(add-->0) s.bats.push(mkBat(s.cam.y+(Math.random()-.5)*H*2,s.pl.y));
 }
 
 function platOverlap(s,wx,wy,r){
@@ -309,7 +353,9 @@ function tryPlaceCoin(s,wy,band){
   if(hash2(band,42)>spawnChance) return;
   if(s.collectedCoins.has(band)) return;
   if(s.coins.some(c=>c.id===band)) return;
-  const wx=WALL+14+hash2(band,40)*(W-WALL*2-28);
+  // PHASE 2: use tower bounds for x placement
+  const t = s.activeTower;
+  const wx = t.worldX + t.wallThickness + 14 + hash2(band,40) * (t.width - t.wallThickness*2 - 28);
   let cy=wy+hash2(band,43)*30-15;
   for(let i=0;i<8;i++){if(!platOverlap(s,wx,cy,9))break;cy-=12;}
   s.coins.push({x:wx,y:cy,collected:false,bob:hash2(band,41)*Math.PI*2,id:band});
@@ -320,7 +366,9 @@ function tryPlaceHeart(s,wy,band){
   if(s.collectedHearts.has(hid)) return;
   if(s.hearts.some(h=>h.id===hid)) return;
   if(hash2(band,50)>heartSpawnRate()) return;
-  const wx=WALL+18+hash2(band,51)*(W-WALL*2-36);
+  // PHASE 2: use tower bounds for x placement
+  const t = s.activeTower;
+  const wx = t.worldX + t.wallThickness + 18 + hash2(band,51) * (t.width - t.wallThickness*2 - 36);
   let cy=wy+hash2(band,53)*40-20;
   for(let i=0;i<8;i++){if(!platOverlap(s,wx,cy,11))break;cy-=14;}
   s.hearts.push({x:wx,y:cy,collected:false,bob:hash2(band,52)*Math.PI*2,id:hid});
@@ -332,15 +380,13 @@ function tryPlaceMushroom(s, p){
   if(s.mushrooms.some(m=>m.platId===p.id)) return;
   const density = Math.min(1, (absScore - MUSH_START) / (MUSH_FULL - MUSH_START));
   if(hash2(p.id*53+7, 99) > density * MUSH_MAX_DENSITY) return;
-  // Position deterministically along the platform, away from edges
   const mx = p.x + 10 + hash2(p.id, 88) * (p.w - 20);
-  // Stagger initial puff timers so mushrooms don't all puff at once on entry
   const initDelay = 80 + hash2(p.id, 91) * 220;
   s.mushrooms.push({
-    x:mx, y:p.y,       // y = platform top world-Y
+    x:mx, y:p.y,
     platId:p.id,
     puffTimer:initDelay,
-    cloud:null,        // null or {timer, maxTimer} when active
+    cloud:null,
     bob:hash2(p.id,92)*Math.PI*2,
   });
 }
@@ -348,9 +394,12 @@ function tryPlaceMushroom(s, p){
 function addP(s,wy){
   const id=platId(wy);
   if(s.plats.some(p=>p.id===id)) return;
-  const avail=W-WALL*2;
+  // PHASE 2: use tower bounds for platform placement
+  const t = s.activeTower;
+  const avail = t.width - t.wallThickness * 2;
   const rng1=hash2(id,1),rng2=hash2(id,2),rng3=hash2(id,3),rng4=hash2(id,4);
-  const w=52+rng1*84, x=WALL+6+rng2*(avail-w-12);
+  const w=52+rng1*84;
+  const x = t.worldX + t.wallThickness + 6 + rng2 * (avail - w - 12);
   const icy=rng3<0.18, torch=!icy&&rng4<0.3;
   const p={x,y:wy,w,h:14,icy,torch,id};
   s.plats.push(p);
@@ -359,13 +408,11 @@ function addP(s,wy){
 
 function cull(s){
   const margin=H*0.75;
-  const t=s.cam-margin, b=s.cam+H+margin;
+  // PHASE 1: use s.cam.y
+  const t=s.cam.y-margin, b=s.cam.y+H+margin;
   s.plats=s.plats.filter(p=>p.y>t&&p.y<b);
   s.coins=s.coins.filter(c=>!c.collected&&c.y>t&&c.y<b);
   s.hearts=s.hearts.filter(h=>!h.collected&&h.y>t&&h.y<b);
-  // FIX 2: All bats (regardless of state) are culled when far offscreen.
-  // Previously only idle bats were culled, letting agro/diving/retreating bats
-  // accumulate forever and degrade performance over long runs.
   s.bats=s.bats.filter(bt=>bt.wy>t-H*1.5&&bt.wy<b+H*1.5);
   s.mushrooms=s.mushrooms.filter(m=>m.y>t&&m.y<b);
 }
@@ -376,10 +423,10 @@ const FALL_THRESH=22;
 const FALL_SEVERE=34;
 
 // ── Mushrooms ─────────────────────────────────────────────────────────────────
-const CLOUD_RADIUS   = 30;   // px — area of spore cloud
-const CLOUD_DURATION = 160;  // ticks cloud stays active
-const PUFF_MIN       = 200;  // ticks minimum between puffs
-const PUFF_RANGE     = 220;  // random range added on top
+const CLOUD_RADIUS   = 30;
+const CLOUD_DURATION = 160;
+const PUFF_MIN       = 200;
+const PUFF_RANGE     = 220;
 
 function updateMushrooms(s){
   const pl = s.pl;
@@ -399,7 +446,6 @@ function updateMushrooms(s){
       }
     }
 
-    // Check if player is inside this cloud
     if(m.cloud){
       const dx = pl.x - m.x, dy = pl.y - m.y;
       if(Math.sqrt(dx*dx + dy*dy) < CLOUD_RADIUS + 8) inCloud = true;
@@ -413,7 +459,6 @@ function updateMushrooms(s){
       pl.sporeExposure = 0;
     }
   } else {
-    // Drain exposure quickly once out of the cloud
     pl.sporeExposure = Math.max(0, pl.sporeExposure - 3);
   }
 }
@@ -434,7 +479,7 @@ function updateBats(s){
       bt.wy+=Math.sin(bt.flap*0.25)*0.3;
       if(bt.x<WALL+8||bt.x>W-WALL-8) bt.vx*=-1;
       bt.vx=Math.max(-BAT_IDLE_SPEED,Math.min(BAT_IDLE_SPEED,bt.vx));
-      const bsy=bt.wy-s.cam;
+      const bsy=bt.wy-s.cam.y; // PHASE 1
       const distToPlayer=Math.sqrt((bt.x-pl.x)**2+(bt.wy-pl.y)**2);
       if(bsy>-50&&bsy<H+50&&!paused&&distToPlayer>batAgroRadius()&&s.tick%BAT_AGRO_PERIOD===0&&Math.random()<agroRate){
         bt.state='agro';bt.agroTimer=90+Math.random()*60;
@@ -455,7 +500,7 @@ function updateBats(s){
         takeDamage(s,1,'🦇 HIT!');
         bt.state='retreating';bt.retreatTimer=100;bt.dvx*=-0.7;bt.dvy=-3;bt.hurtTimer=45;
       }
-      const bsy=bt.wy-s.cam;
+      const bsy=bt.wy-s.cam.y; // PHASE 1
       if(bsy<-H||bsy>H*2||bt.x<WALL||bt.x>W-WALL){
         bt.state='retreating';bt.retreatTimer=80;bt.dvx*=-0.5;bt.dvy=-2;
       }
@@ -470,8 +515,6 @@ function updateBats(s){
 function update(s){
   s.tick++;
   const pl=s.pl,prevY=pl.y,prevX=pl.x;
-  // FIX 1: Use gravVal() instead of raw upgVal('gravity') to prevent gravity
-  // from inverting at high upgrade levels and launching the player upward forever.
   const grav=gravVal(),ab=airbrakeVal();
 
   if(pl.vy>0) pl.fallVy=Math.max(pl.fallVy,pl.vy);
@@ -481,9 +524,26 @@ function update(s){
   if(pl.hurtTimer>0) pl.hurtTimer--;
   if(pl.damageFlash>0) pl.damageFlash--;
 
-  const bounce=bounceVal();
-  if(pl.x-pl.w/2<WALL){pl.x=WALL+pl.w/2;pl.vx=Math.abs(pl.vx)*bounce;}
-  if(pl.x+pl.w/2>W-WALL){pl.x=W-WALL-pl.w/2;pl.vx=-Math.abs(pl.vx)*bounce;}
+  // PHASE 2: wall collision uses tower bounds and respects wall breaks.
+  // For the initial tower (worldX=0, width=W) this is numerically identical
+  // to the original WALL / W-WALL clamps, but now holes in the wall are passable.
+  const bounce = bounceVal();
+  const tw = s.activeTower;
+  const leftInner  = tw.worldX + tw.wallThickness;
+  const rightInner = tw.worldX + tw.width - tw.wallThickness;
+
+  if(pl.x - pl.w/2 < leftInner){
+    if(!isInBreak(tw, 'left', pl.y)){
+      pl.x = leftInner + pl.w/2;
+      pl.vx = Math.abs(pl.vx) * bounce;
+    }
+  }
+  if(pl.x + pl.w/2 > rightInner){
+    if(!isInBreak(tw, 'right', pl.y)){
+      pl.x = rightInner - pl.w/2;
+      pl.vx = -Math.abs(pl.vx) * bounce;
+    }
+  }
 
   if(pl.onG){pl.coyote=upgVal('coyote')|0;pl.airJumpsLeft=maxAirJumps();}
   else if(pl.coyote>0) pl.coyote--;
@@ -500,11 +560,6 @@ function update(s){
       if(pl.fallVy>=FALL_THRESH){
         const resist=upgVal('fallres');
         let dmg=pl.fallVy>=FALL_SEVERE?2:1;
-        // FIX 3: The original formula had a cliff at integer resist values where
-        // the fractional part became 0, making takeDamage fire ~100% of the time
-        // even though the floor had already reduced the damage. The new approach
-        // separates deterministic integer reduction from probabilistic fractional
-        // reduction cleanly, so protection scales continuously with no cliffs.
         const reducedDmg=Math.max(0,dmg-Math.floor(resist));
         const extraResist=resist-Math.floor(resist);
         const finalDmg=(reducedDmg>0&&Math.random()<extraResist)?reducedDmg-1:reducedDmg;
@@ -537,7 +592,7 @@ function update(s){
       coin.collected=true;
       s.collectedCoins.add(coin.id);
       s.session_coins+=val;totalCoins+=val;
-      addFloat(coin.x,coin.y-s.cam,val>1?'+'+val+' ⚜':'+⚜','#ffcc44');
+      addFloat(coin.x,coin.y-s.cam.y,val>1?'+'+val+' ⚜':'+⚜','#ffcc44'); // PHASE 1
     }
   }
 
@@ -550,17 +605,20 @@ function update(s){
       s.collectedHearts.add(heart.id);
       if(pl.hp<pl.maxHp){
         pl.hp=Math.min(pl.maxHp,pl.hp+1);
-        addFloat(heart.x,heart.y-s.cam,'❤️ +1','#ff88aa');
+        addFloat(heart.x,heart.y-s.cam.y,'❤️ +1','#ff88aa'); // PHASE 1
         updateHeartsUI(pl);
       } else {
-        addFloat(heart.x,heart.y-s.cam,'FULL','#ff88aa');
+        addFloat(heart.x,heart.y-s.cam.y,'FULL','#ff88aa'); // PHASE 1
       }
     }
   }
 
   updateMushrooms(s);
   updateBats(s);
-  s.cam+=(pl.y-H*.4-s.cam)*.07;
+
+  // PHASE 1: update cam.y (x stays 0 in tower mode — Phase 3 will handle the rest)
+  s.cam.y += (pl.y - H*.4 - s.cam.y) * .07;
+
   s.score=Math.floor(-pl.y/10);
   if(s.score>best) best=s.score;
   if(s.score<lowest) lowest=s.score;
@@ -573,14 +631,16 @@ function update(s){
   document.getElementById('best').textContent='BEST: '+best+' / '+lowest;
   document.getElementById('coindisp').textContent='⚜ '+totalCoins;
   updateHeartsUI(pl);
-  if(pl.y-s.cam>H+220){pl.hp=0;killPlayer(s);}
+
+  // PHASE 1: fall-off-bottom uses cam.y
+  if(pl.y-s.cam.y>H+220){pl.hp=0;killPlayer(s);}
 }
 
 function takeDamage(s,dmg,label){
   const pl=s.pl;
   if(pl.hurtTimer>0) return;
   pl.hp=Math.max(0,pl.hp-dmg);pl.hurtTimer=90;pl.damageFlash=20;
-  addFloat(pl.x,pl.y-s.cam-20,label||'-'+dmg+'❤️','#ff4444');
+  addFloat(pl.x,pl.y-s.cam.y-20,label||'-'+dmg+'❤️','#ff4444'); // PHASE 1
   updateHeartsUI(pl);
   if(pl.hp<=0) killPlayer(s);
 }
@@ -619,18 +679,23 @@ function up(){
 const BOUNCE_COLORS=[[255,200,80],[80,200,255],[180,80,255],[80,255,120],[255,140,40]];
 
 function simTrajectory(sx,sy,vx0,vy0,totalSteps){
-  // FIX 1: Use gravVal() here too so the preview arc matches actual physics
-  // and doesn't diverge from reality at high Featherfall upgrade levels.
   const grav=gravVal(),ab=airbrakeVal(),bc=bounceVal(),pf=frictionVal();
   const hw=9,hh=12;
   let tx=sx,ty=sy,tvx=vx0,tvy=vy0;
   const segs=[{dots:[],bounced:false,bi:0}];
+
+  // PHASE 2: use tower inner bounds for wall bounce in preview arc
+  const tw = S.activeTower;
+  const tLeft  = tw.worldX + tw.wallThickness;
+  const tRight = tw.worldX + tw.width - tw.wallThickness;
+
   for(let i=0;i<totalSteps;i++){
     const ptx=tx,pty=ty;
     tvy+=grav;tvx*=ab;tx+=tvx;ty+=tvy;
     let hit=false;
-    if(tx-hw<=WALL){tx=WALL+hw;tvx=Math.abs(tvx)*bc;hit=true;}
-    else if(tx+hw>=W-WALL){tx=W-WALL-hw;tvx=-Math.abs(tvx)*bc;hit=true;}
+    // PHASE 2: use tower-aware bounds (numerically same as WALL/W-WALL for init tower)
+    if(tx-hw<=tLeft){tx=tLeft+hw;tvx=Math.abs(tvx)*bc;hit=true;}
+    else if(tx+hw>=tRight){tx=tRight-hw;tvx=-Math.abs(tvx)*bc;hit=true;}
     if(!hit){
       for(const p of S.plats){
         const pR=p.x+p.w,pB=p.y+p.h;
@@ -639,8 +704,6 @@ function simTrajectory(sx,sy,vx0,vy0,totalSteps){
         const fromLeft=(ptx+hw)<=p.x,fromRight=(ptx-hw)>=pR;
         if(fromTop){
           ty=p.y-hh;tvx*=pf;
-          // Early exit: player has come to rest on a platform — no point
-          // drawing further since the trajectory ends here in practice.
           if(Math.abs(tvx)<0.8&&Math.abs(tvy)<1.5){
             segs[segs.length-1].dots.push({x:tx,y:ty});
             if(segs[segs.length-1].dots.length===0) segs.pop();
@@ -669,10 +732,12 @@ function simTrajectory(sx,sy,vx0,vy0,totalSteps){
 
 function drawCastleWall(){
   const bH=16,bW=32;
-  const topWorldRow=Math.floor(S.cam/bH);
+  // PHASE 1: S.cam.y
+  const topWorldRow=Math.floor(S.cam.y/bH);
   for(let row=topWorldRow-1;row<=topWorldRow+Math.ceil(H/bH)+1;row++){
     const off=(row%2===0)?0:bW/2;
-    const wy=Math.round((row*bH)-S.cam);
+    // PHASE 1: S.cam.y
+    const wy=Math.round((row*bH)-S.cam.y);
     const shade=row%3===0?'#2a2520':row%3===1?'#252018':'#221e15';
     for(let col=-1;col<=Math.ceil(W/bW)+1;col++){
       const bx=Math.round(col*bW+off);
@@ -703,21 +768,100 @@ function drawTorch(x,y){
   ctx.fillStyle='rgba(255,255,180,0.8)';ctx.beginPath();ctx.ellipse(x,y+fl*0.1,1,3,0,0,Math.PI*2);ctx.fill();
 }
 
-function drawWalls(){
-  for(let y=0;y<H;y+=12){
-    ctx.fillStyle=y%24<12?'#3a3530':'#332f2a';
-    ctx.fillRect(0,y,WALL,12);
-  }
-  ctx.fillStyle='#555';ctx.fillRect(WALL-2,0,2,H);
-  for(let y=0;y<H;y+=12){
-    ctx.fillStyle=y%24<12?'#3a3530':'#332f2a';
-    ctx.fillRect(W-WALL,y,WALL,12);
-  }
-  ctx.fillStyle='#555';ctx.fillRect(W-WALL,0,2,H);
+// PHASE 2: replaces drawWalls(). Draws the tower walls with gaps at breaks.
+function drawTowerWalls(){
+  const tw  = S.activeTower;
+  const camY = S.cam.y;
+  const camX = S.cam.x;
+
+  ['left','right'].forEach(side => {
+    // Screen X of this wall's left edge
+    const sx = side === 'left'
+      ? (tw.worldX - camX)|0
+      : (tw.worldX + tw.width - tw.wallThickness - camX)|0;
+
+    const sideBreaks = tw.breaks
+      .filter(b => b.side === side)
+      .sort((a, b) => a.yTop - b.yTop);
+
+    // Visible world-Y range (with a small overdraw margin)
+    const visTop = camY - 12;
+    const visBot = camY + H + 12;
+
+    // Build solid wall segments between breaks
+    const solidSegs = [];
+    let cur = visTop;
+    for (const brk of sideBreaks) {
+      if (cur < brk.yTop) solidSegs.push({ wy1: cur, wy2: Math.min(brk.yTop, visBot) });
+      cur = Math.max(cur, brk.yBottom);
+    }
+    if (cur < visBot) solidSegs.push({ wy1: cur, wy2: visBot });
+
+    // Draw each solid segment
+    for (const seg of solidSegs) {
+      const sy1 = (seg.wy1 - camY)|0;
+      const sy2 = (seg.wy2 - camY)|0;
+
+      // Align brick rows to world-Y so pattern doesn't shift with camera
+      const rowStart = Math.floor(sy1 / 12) * 12;
+      for (let y = rowStart; y < sy2; y += 12) {
+        const clipTop = Math.max(y, sy1);
+        const clipH   = Math.min(y + 12, sy2) - clipTop;
+        if (clipH <= 0) continue;
+        ctx.fillStyle = y % 24 < 12 ? '#3a3530' : '#332f2a';
+        ctx.fillRect(sx, clipTop, tw.wallThickness, clipH);
+      }
+
+      // Inner edge highlight
+      ctx.fillStyle = '#555';
+      if (side === 'left') {
+        ctx.fillRect(sx + tw.wallThickness - 2, sy1, 2, sy2 - sy1);
+      } else {
+        ctx.fillRect(sx, sy1, 2, sy2 - sy1);
+      }
+    }
+
+    // Draw decorative edges and light bleed at each break opening
+    for (const brk of sideBreaks) {
+      const bsy1 = (brk.yTop    - camY)|0;
+      const bsy2 = (brk.yBottom - camY)|0;
+      if (bsy2 < -30 || bsy1 > H + 30) continue;
+
+      // Shadow cap at top of opening
+      if (bsy1 > -15 && bsy1 < H + 15) {
+        ctx.fillStyle = '#111008';
+        ctx.fillRect(sx, bsy1 - 4, tw.wallThickness, 5);
+        ctx.fillStyle = '#666';
+        ctx.fillRect(sx + 2, bsy1 - 2, tw.wallThickness - 4, 2);
+      }
+      // Shadow cap at bottom of opening
+      if (bsy2 > -15 && bsy2 < H + 15) {
+        ctx.fillStyle = '#111008';
+        ctx.fillRect(sx, bsy2, tw.wallThickness, 5);
+        ctx.fillStyle = '#666';
+        ctx.fillRect(sx + 2, bsy2 + 2, tw.wallThickness - 4, 2);
+      }
+
+      // Ambient light bleed through the gap (outside is brighter)
+      const clipY1 = Math.max(0, bsy1);
+      const clipY2 = Math.min(H, bsy2);
+      if (clipY2 > clipY1) {
+        // Gradient from inner face outward
+        const innerX = side === 'left' ? sx + tw.wallThickness : sx;
+        const outerX = side === 'left' ? sx : sx + tw.wallThickness;
+        const grd = ctx.createLinearGradient(innerX, 0, outerX, 0);
+        grd.addColorStop(0, 'rgba(60,130,220,0.13)');
+        grd.addColorStop(1, 'rgba(60,130,220,0)');
+        ctx.fillStyle = grd;
+        ctx.fillRect(sx, clipY1, tw.wallThickness, clipY2 - clipY1);
+      }
+    }
+  });
 }
 
 function drawPlatform(p){
-  const sy=(p.y-S.cam)|0;
+  // PHASE 1: S.cam.y
+  const sy=(p.y-S.cam.y)|0;
   if(p.icy){
     ctx.fillStyle='#445566';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
     ctx.fillStyle='#7aaccc';ctx.fillRect(p.x|0,sy,p.w|0,4);
@@ -744,7 +888,8 @@ function drawSpikesOnPlat(p) {
   const spikes = getPlatSpikes(p);
   if (!spikes.length) return;
 
-  const sy = (p.y - S.cam)|0;
+  // PHASE 1: S.cam.y
+  const sy = (p.y - S.cam.y)|0;
 
   const absScore  = Math.abs(p.y) / 10;
   const density   = Math.min(1, (absScore - SPIKE_START) / (SPIKE_FULL - SPIKE_START));
@@ -752,38 +897,30 @@ function drawSpikesOnPlat(p) {
 
   for (const wx of spikes) {
     const x = wx|0;
-
-    // Per-spike glow — only appears beneath each individual spike, not the whole platform
     ctx.fillStyle = `rgba(255,40,0,${glowAlpha})`;
     ctx.fillRect(x - 5, (sy - 10)|0, 10, 10);
-
     ctx.fillStyle = '#1a1218';
     ctx.fillRect(x,     sy - 10, 2, 2);
     ctx.fillRect(x - 1, sy -  8, 4, 2);
     ctx.fillRect(x - 2, sy -  6, 6, 2);
     ctx.fillRect(x - 3, sy -  4, 8, 2);
     ctx.fillRect(x - 3, sy -  2, 8, 2);
-
     ctx.fillStyle = '#7a7e88';
     ctx.fillRect(x,     sy - 9, 2, 2);
     ctx.fillRect(x - 1, sy - 7, 4, 2);
     ctx.fillRect(x - 2, sy - 5, 6, 2);
     ctx.fillRect(x - 3, sy - 3, 8, 2);
     ctx.fillRect(x - 3, sy - 1, 8, 2);
-
     ctx.fillStyle = '#9aa0aa';
     ctx.fillRect(x,     sy - 9, 1, 2);
     ctx.fillRect(x - 1, sy - 7, 2, 2);
     ctx.fillRect(x - 2, sy - 5, 3, 2);
-
     ctx.fillStyle = '#d0d8e0';
     ctx.fillRect(x, sy - 10, 1, 1);
-
     ctx.fillStyle = '#505560';
     ctx.fillRect(x + 1, sy - 7, 2, 2);
     ctx.fillRect(x + 2, sy - 5, 2, 2);
     ctx.fillRect(x + 3, sy - 3, 2, 4);
-
     const bloodR = (120 + density * 100)|0;
     const bloodA = 0.25 + density * 0.5;
     ctx.fillStyle = `rgba(${bloodR},0,0,${bloodA})`;
@@ -794,32 +931,26 @@ function drawSpikesOnPlat(p) {
 
 function drawMushrooms(){
   for(const m of S.mushrooms){
-    const sy = (m.y - S.cam)|0;
+    // PHASE 1: S.cam.y
+    const sy = (m.y - S.cam.y)|0;
     if(sy < -60 || sy > H+20) continue;
     const mx = m.x|0;
 
-    // ── Spore cloud ──────────────────────────────────────────────────────────
     if(m.cloud){
-      const t = m.cloud.timer / m.cloud.maxTimer; // 1→0 as cloud fades
+      const t = m.cloud.timer / m.cloud.maxTimer;
       const pulse = 0.7 + 0.3*Math.sin(S.tick*0.18);
       const outerR = CLOUD_RADIUS + 6*Math.sin(S.tick*0.09);
-
-      // Layered radial gradients give the cloud a lumpy, volumetric feel
       const g1 = ctx.createRadialGradient(mx, sy-8, 0, mx, sy-8, outerR);
       g1.addColorStop(0, `rgba(140,200,60,${0.38*t*pulse})`);
       g1.addColorStop(0.5,`rgba(100,170,30,${0.22*t*pulse})`);
       g1.addColorStop(1,  `rgba(60,120,10,0)`);
       ctx.fillStyle = g1;
       ctx.beginPath(); ctx.arc(mx, sy-8, outerR, 0, Math.PI*2); ctx.fill();
-
-      // Secondary lobe offset slightly for a less-perfect-circle feel
       const g2 = ctx.createRadialGradient(mx+8, sy-14, 0, mx+8, sy-14, outerR*0.65);
       g2.addColorStop(0, `rgba(160,210,80,${0.22*t*pulse})`);
       g2.addColorStop(1,  `rgba(80,150,20,0)`);
       ctx.fillStyle = g2;
       ctx.beginPath(); ctx.arc(mx+8, sy-14, outerR*0.65, 0, Math.PI*2); ctx.fill();
-
-      // Drifting spore particles
       for(let i=0;i<5;i++){
         const angle = (S.tick*0.04 + i*1.26);
         const r = (12 + i*4) * t;
@@ -830,7 +961,6 @@ function drawMushrooms(){
       }
     }
 
-    // ── Warning glow when puff is imminent ───────────────────────────────────
     if(!m.cloud && m.puffTimer < 90){
       const warn = 1 - m.puffTimer/90;
       const wPulse = 0.5 + 0.5*Math.sin(S.tick*0.25);
@@ -838,39 +968,27 @@ function drawMushrooms(){
       ctx.beginPath(); ctx.arc(mx, sy-4, 20, 0, Math.PI*2); ctx.fill();
     }
 
-    // ── Pixel-art mushroom body ───────────────────────────────────────────────
-    // Stem
     ctx.fillStyle = '#c8b89a';
     ctx.fillRect(mx-3, sy-7, 6, 7);
     ctx.fillStyle = '#ede0c8';
     ctx.fillRect(mx-2, sy-6, 2, 5);
     ctx.fillStyle = '#a89070';
     ctx.fillRect(mx+1, sy-7, 2, 7);
-
-    // Cap shadow
     ctx.fillStyle = '#1a1a10';
     ctx.fillRect(mx-7, sy-14, 14, 8);
-
-    // Cap body — colour shifts slightly when warning
     const capR = (!m.cloud && m.puffTimer < 90)
       ? (120 + Math.floor(80*(1-m.puffTimer/90)))|0 : 180;
     ctx.fillStyle = `rgb(${capR},48,20)`;
     ctx.fillRect(mx-6, sy-15, 12, 8);
     ctx.fillRect(mx-4, sy-17, 8,  2);
     ctx.fillRect(mx-2, sy-18, 4,  1);
-
-    // Cap highlight (left face)
     ctx.fillStyle = `rgb(${Math.min(255,capR+60)},90,50)`;
     ctx.fillRect(mx-5, sy-15, 4, 3);
     ctx.fillRect(mx-3, sy-16, 2, 1);
-
-    // White spots
     ctx.fillStyle = '#f0f0e8';
     ctx.fillRect(mx-4, sy-14, 3, 3);
     ctx.fillRect(mx+2, sy-13, 2, 2);
     ctx.fillRect(mx-1, sy-16, 2, 2);
-
-    // Spot shading
     ctx.fillStyle = '#c8c8b8';
     ctx.fillRect(mx-3, sy-12, 1, 1);
     ctx.fillRect(mx+3, sy-12, 1, 1);
@@ -879,7 +997,8 @@ function drawMushrooms(){
 
 function drawGold(coin){
   if(coin.collected) return;
-  const sy=(coin.y-S.cam+Math.sin(coin.bob)*3)|0;
+  // PHASE 1: S.cam.y
+  const sy=(coin.y-S.cam.y+Math.sin(coin.bob)*3)|0;
   const g=ctx.createRadialGradient(coin.x,sy,0,coin.x,sy,12);
   g.addColorStop(0,'rgba(255,220,80,0.3)');g.addColorStop(1,'rgba(255,180,0,0)');
   ctx.fillStyle=g;ctx.beginPath();ctx.arc(coin.x,sy,12,0,Math.PI*2);ctx.fill();
@@ -895,7 +1014,8 @@ function drawGold(coin){
 
 function drawHeart(heart){
   if(heart.collected) return;
-  const sy=(heart.y-S.cam+Math.sin(heart.bob)*3)|0;
+  // PHASE 1: S.cam.y
+  const sy=(heart.y-S.cam.y+Math.sin(heart.bob)*3)|0;
   const hx=heart.x|0;
   const grd=ctx.createRadialGradient(hx,sy,0,hx,sy,16);
   grd.addColorStop(0,'rgba(255,100,140,0.35)');grd.addColorStop(1,'rgba(255,50,80,0)');
@@ -919,7 +1039,8 @@ function drawKnight(){
   const pl=S.pl;
   const flash=pl.damageFlash>0&&Math.floor(pl.damageFlash/4)%2===0;
   if(flash) ctx.globalAlpha=0.35;
-  const x=(pl.x-pl.w/2)|0,y=(pl.y-pl.h/2-S.cam)|0,w=pl.w,h=pl.h;
+  // PHASE 1: S.cam.y
+  const x=(pl.x-pl.w/2)|0,y=(pl.y-pl.h/2-S.cam.y)|0,w=pl.w,h=pl.h;
   const moving=Math.abs(pl.vx)>0.5,legOff=pl.onG&&moving?Math.sin(S.tick*0.3)*3:0;
   ctx.fillStyle='rgba(0,0,0,0.25)';ctx.beginPath();ctx.ellipse(x+w/2,y+h+3,w/2-2,4,0,0,Math.PI*2);ctx.fill();
   ctx.fillStyle='#555566';ctx.fillRect(x+2,y+h-8,6,8+legOff);ctx.fillRect(x+w-8,y+h-8,6,8-legOff);
@@ -959,7 +1080,8 @@ function drawKnight(){
 }
 
 function drawBat(bt){
-  const sy=(bt.wy-S.cam)|0;
+  // PHASE 1: S.cam.y
+  const sy=(bt.wy-S.cam.y)|0;
   if(sy<-30||sy>H+30) return;
   const agro=bt.state==='agro'||bt.state==='diving';
   const flash=bt.hurtTimer>0&&Math.floor(bt.hurtTimer/3)%2===0;
@@ -985,7 +1107,8 @@ function drawSling(){
   if(!drag) return;
   const pl=S.pl;
   const ps={x:pl.x,y:pl.y};
-  const camY=S.cam;
+  // PHASE 1: camY from S.cam.y
+  const camY=S.cam.y;
   const dx=drag.sx-drag.cx,dy=drag.sy-drag.cy,dist=Math.sqrt(dx*dx+dy*dy);
   if(dist<4) return;
   const canFire=canLaunch();
@@ -998,14 +1121,9 @@ function drawSling(){
   ctx.beginPath();ctx.moveTo(drag.sx,drag.sy);ctx.lineTo(drag.cx,drag.cy);ctx.stroke();
   ctx.setLineDash([]);ctx.restore();
 
-  // Divide by power so weak shots get more steps and cover the same visual
-  // distance as strong ones — preview length stays constant at all power levels.
   const totalSteps=Math.floor(upgVal('preview')*3/Math.max(pw,0.15));
   const segs=simTrajectory(ps.x,ps.y,vx0,vy0,totalSteps);
 
-  // Level 0 = initial arc only (1 seg), level N = N rebounds (N+1 segs).
-  // If the step budget runs out before reaching the Nth rebound, the segs
-  // array will simply be shorter — length naturally takes priority over count.
   const maxSegs=upgLevels['preview']+1;
   const drawSegs=segs.slice(0,maxSegs);
 
@@ -1023,7 +1141,6 @@ function drawSling(){
       ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
       ctx.beginPath();ctx.arc(d.x,d.y-camY,r,0,Math.PI*2);ctx.fill();
     });
-    // X marker at each bounce point
     if(seg.bounced&&si<drawSegs.length-1&&seg.dots.length>0){
       const last=seg.dots[seg.dots.length-1];
       const lsy=last.y-camY;
@@ -1051,7 +1168,8 @@ function drawFloats(){
 function drawSky(){
   const t=Math.max(0,Math.min(1,S.score/500));
   ctx.fillStyle=`rgb(${8+t*4|0},${8+t*3|0},${22+t*10|0})`;ctx.fillRect(0,0,W,H);
-  const moonY=(((-2000-S.cam)%(H*8)+H*8)%(H*8))-H;
+  // PHASE 1: S.cam.y
+  const moonY=(((-2000-S.cam.y)%(H*8)+H*8)%(H*8))-H;
   if(moonY>-60&&moonY<H+60){
     ctx.fillStyle='rgba(255,240,180,0.12)';ctx.beginPath();ctx.arc(W/2,moonY,50,0,Math.PI*2);ctx.fill();
     ctx.fillStyle='#fffde0';ctx.beginPath();ctx.arc(W/2,moonY,22,0,Math.PI*2);ctx.fill();
@@ -1059,7 +1177,8 @@ function drawSky(){
   }
   for(let i=0;i<120;i++){
     const sx=hashY(i*17.3)*W,wy=hashY(i*31.7)*H*10-H*5;
-    const sy=((wy-S.cam)%(H*8)+H*8)%(H*8)-H;
+    // PHASE 1: S.cam.y
+    const sy=((wy-S.cam.y)%(H*8)+H*8)%(H*8)-H;
     if(sy<0||sy>H) continue;
     const twink=0.4+0.6*Math.abs(Math.sin(S.tick*0.02+i));
     ctx.fillStyle=`rgba(255,245,200,${twink*0.9})`;
@@ -1081,7 +1200,8 @@ function frame(){
   for(const h of S.hearts) drawHeart(h);
   drawMushrooms();
   drawKnight();
-  drawWalls();
+  // PHASE 2: drawTowerWalls() replaces drawWalls() — handles breaks
+  drawTowerWalls();
   drawSling();
   if(paused){ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,W,H);}
   const vig=ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
@@ -1089,7 +1209,8 @@ function frame(){
   ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
   ctx.fillStyle='rgba(0,0,0,0.04)';for(let i=0;i<H;i+=2)ctx.fillRect(0,i,W,1);
   if(S.pl.onG&&!drag&&!paused&&S.tick%60<38){
-    const py=S.pl.y-S.cam+S.pl.h/2+22;
+    // PHASE 1: S.cam.y
+    const py=S.pl.y-S.cam.y+S.pl.h/2+22;
     ctx.fillStyle='rgba(255,220,120,.7)';ctx.font='bold 9px monospace';ctx.textAlign='center';
     ctx.fillText('DRAG ANYWHERE TO LAUNCH!',W/2,py);ctx.textAlign='left';
   }
