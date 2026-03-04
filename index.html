@@ -147,6 +147,8 @@ function maxHP(){return upgVal('maxhp')|0;}
 function maxAirJumps(){return upgVal('airjumps')|0;}
 function frictionVal(){return Math.max(0.05, upgVal('friction'));}
 function airbrakeVal(){return Math.max(0.05, upgVal('airbrake'));}
+// FIX 1: Gravity clamped to a minimum so it can never invert and send the player flying upward.
+function gravVal(){return Math.max(0.04, upgVal('gravity'));}
 function batAgroRadius(){return Math.min(upgVal('batradius'), H*0.45);}
 function heartSpawnRate(){return upgVal('heartrate');}
 
@@ -174,13 +176,10 @@ function hashY(y){let h=Math.sin(y*127.1+311.7)*43758.5453;return h-Math.floor(h
 function hash2(a,b){let h=Math.sin(a*127.1+b*311.7+92.3)*43758.5453;return h-Math.floor(h);}
 
 // ── Spike helpers ─────────────────────────────────────────────────────────────
-// Returns array of world-X positions for spikes on a given platform.
-// Fully deterministic — same platform ID always yields the same spikes.
-// Spikes begin appearing at |score| 300 and reach max density at |score| 3000.
-const SPIKE_START = 300;   // |score| at which spikes begin
-const SPIKE_FULL  = 3000;  // |score| at which density caps
-const SPIKE_SLOT  = 13;    // px between spike centres
-const SPIKE_MAX_FILL = 0.72; // maximum fraction of slots that can be spiked
+const SPIKE_START = 300;
+const SPIKE_FULL  = 3000;
+const SPIKE_SLOT  = 13;
+const SPIKE_MAX_FILL = 0.72;
 
 function getPlatSpikes(p) {
   const absScore = Math.abs(p.y) / 10;
@@ -193,7 +192,6 @@ function getPlatSpikes(p) {
 
   const spikes = [];
   for (let i = 0; i < slots; i++) {
-    // Unique hash per (platform-id, slot-index) — deterministic, stateless
     if (hash2(p.id * 97 + i, 77) < fillChance) {
       spikes.push(p.x + 2 + SPIKE_SLOT * 0.5 + i * SPIKE_SLOT);
     }
@@ -201,18 +199,16 @@ function getPlatSpikes(p) {
   return spikes;
 }
 
-// Check if player is standing on / entering spikes and deal damage.
 function checkSpikeCollision(s) {
   const pl = s.pl;
   if (pl.hurtTimer > 0) return;
 
-  const plB  = pl.y + pl.h / 2;  // player feet world-Y
+  const plB  = pl.y + pl.h / 2;
   const plL  = pl.x - pl.w / 2 + 3;
   const plR  = pl.x + pl.w / 2 - 3;
-  const SPIKE_H = 9; // spike tip height above platform top
+  const SPIKE_H = 9;
 
   for (const p of s.plats) {
-    // Quick AABB pre-cull: feet must be within spike band
     if (plB < p.y - SPIKE_H - 1 || plB > p.y + 3) continue;
     if (plR < p.x || plL > p.x + p.w) continue;
 
@@ -220,7 +216,6 @@ function checkSpikeCollision(s) {
     for (const sx of spikes) {
       if (plR > sx - 4 && plL < sx + 4) {
         takeDamage(s, 1, '🩸 SPIKED!');
-        // Pop player upward so they don't get stuck
         pl.vy = Math.min(pl.vy, -3.5);
         return;
       }
@@ -261,7 +256,9 @@ function mkBat(wy,plY){
     tx:0,ty:0,dvx:0,dvy:0,hurtTimer:0};
 }
 
-function platId(wy){return Math.round(wy/10)||0;}
+// FIX 4: Removed `|| 0` fallback — platforms near y=0 were all colliding on id=0,
+// causing spawn-area platforms to silently vanish.
+function platId(wy){return Math.round(wy/10);}
 
 function gen(s){
   const margin=H*0.75;
@@ -273,10 +270,15 @@ function gen(s){
   let y=mx; while(y<bot){y+=65+Math.random()*85;if(y<bot)addP(s,y);}
   y=mn;     while(y>top){y-=65+Math.random()*85;if(y>top)addP(s,y);}
 
+  // FIX 5: Coins and hearts use a tighter generation margin than the cull margin.
+  // This prevents the churn where items near the cull boundary are repeatedly
+  // created and immediately destroyed as the player oscillates in one area.
+  const coinMargin=H*0.55;
+  const ctop=s.cam-coinMargin, cbot=s.cam+H+coinMargin;
   const COIN_BAND=80, HEART_BAND=320;
-  const cb0=Math.floor(top/COIN_BAND), cb1=Math.ceil(bot/COIN_BAND);
+  const cb0=Math.floor(ctop/COIN_BAND), cb1=Math.ceil(cbot/COIN_BAND);
   for(let b=cb0;b<=cb1;b++) tryPlaceCoin(s,b*COIN_BAND,b);
-  const hb0=Math.floor(top/HEART_BAND), hb1=Math.ceil(bot/HEART_BAND);
+  const hb0=Math.floor(ctop/HEART_BAND), hb1=Math.ceil(cbot/HEART_BAND);
   for(let b=hb0;b<=hb1;b++) tryPlaceHeart(s,b*HEART_BAND,b);
 
   const idle=s.bats.filter(bt=>bt.state==='idle').length;
@@ -327,7 +329,10 @@ function cull(s){
   s.plats=s.plats.filter(p=>p.y>t&&p.y<b);
   s.coins=s.coins.filter(c=>!c.collected&&c.y>t&&c.y<b);
   s.hearts=s.hearts.filter(h=>!h.collected&&h.y>t&&h.y<b);
-  s.bats=s.bats.filter(bt=>bt.state!=='idle'||(bt.wy>t-H&&bt.wy<b+H));
+  // FIX 2: All bats (regardless of state) are culled when far offscreen.
+  // Previously only idle bats were culled, letting agro/diving/retreating bats
+  // accumulate forever and degrade performance over long runs.
+  s.bats=s.bats.filter(bt=>bt.wy>t-H*1.5&&bt.wy<b+H*1.5);
 }
 
 function addFloat(x,sy,text,color){floats.push({x,y:sy,vy:-1.4,life:55,text,color:color||'#ffdd00'});}
@@ -384,7 +389,9 @@ function updateBats(s){
 function update(s){
   s.tick++;
   const pl=s.pl,prevY=pl.y,prevX=pl.x;
-  const grav=upgVal('gravity'),ab=airbrakeVal();
+  // FIX 1: Use gravVal() instead of raw upgVal('gravity') to prevent gravity
+  // from inverting at high upgrade levels and launching the player upward forever.
+  const grav=gravVal(),ab=airbrakeVal();
 
   if(pl.vy>0) pl.fallVy=Math.max(pl.fallVy,pl.vy);
   pl.vy+=grav;
@@ -412,8 +419,15 @@ function update(s){
       if(pl.fallVy>=FALL_THRESH){
         const resist=upgVal('fallres');
         let dmg=pl.fallVy>=FALL_SEVERE?2:1;
-        dmg=Math.max(0,dmg-Math.floor(resist));
-        if(dmg>0&&Math.random()>resist-Math.floor(resist)) takeDamage(s,dmg,'FALL!');
+        // FIX 3: The original formula had a cliff at integer resist values where
+        // the fractional part became 0, making takeDamage fire ~100% of the time
+        // even though the floor had already reduced the damage. The new approach
+        // separates deterministic integer reduction from probabilistic fractional
+        // reduction cleanly, so protection scales continuously with no cliffs.
+        const reducedDmg=Math.max(0,dmg-Math.floor(resist));
+        const extraResist=resist-Math.floor(resist);
+        const finalDmg=(reducedDmg>0&&Math.random()<extraResist)?reducedDmg-1:reducedDmg;
+        if(finalDmg>0) takeDamage(s,finalDmg,'FALL!');
       }
       pl.fallVy=0;pl.y=p.y-pl.h/2;pl.vy=0;pl.vx*=lf;pl.onG=true;
     } else if(fromBot){pl.fallVy=0;pl.y=pB+pl.h/2;pl.vy=Math.abs(pl.vy)*0.3;}
@@ -430,7 +444,6 @@ function update(s){
   }
   if(pl.vy<0) pl.fallVy=0;
 
-  // ── Spike collision (after platform resolution) ───────────────────────────
   checkSpikeCollision(s);
 
   const mag=upgVal('coinmag'),val=upgVal('coinval')|0;
@@ -524,7 +537,9 @@ function up(){
 const BOUNCE_COLORS=[[255,200,80],[80,200,255],[180,80,255],[80,255,120],[255,140,40]];
 
 function simTrajectory(sx,sy,vx0,vy0,totalSteps){
-  const grav=upgVal("gravity"),ab=airbrakeVal(),bc=upgVal("bounce"),pf=frictionVal();
+  // FIX 1: Use gravVal() here too so the preview arc matches actual physics
+  // and doesn't diverge from reality at high Featherfall upgrade levels.
+  const grav=gravVal(),ab=airbrakeVal(),bc=upgVal("bounce"),pf=frictionVal();
   const hw=9,hh=12;
   let tx=sx,ty=sy,tvx=vx0,tvy=vy0;
   const segs=[{dots:[],bounced:false,bi:0}];
@@ -633,16 +648,12 @@ function drawPlatform(p){
   }
 }
 
-// ── Spike drawing ─────────────────────────────────────────────────────────────
-// Each spike is a pixel-art iron triangle above the platform surface.
-// A faint red ambient glow scales with local density to warn the player.
 function drawSpikesOnPlat(p) {
   const spikes = getPlatSpikes(p);
   if (!spikes.length) return;
 
-  const sy = (p.y - S.cam)|0; // platform top screen-Y
+  const sy = (p.y - S.cam)|0;
 
-  // Density-scaled warning glow (red tint under spike rows)
   const absScore  = Math.abs(p.y) / 10;
   const density   = Math.min(1, (absScore - SPIKE_START) / (SPIKE_FULL - SPIKE_START));
   const glowAlpha = 0.04 + density * 0.10;
@@ -652,7 +663,6 @@ function drawSpikesOnPlat(p) {
   for (const wx of spikes) {
     const x = wx|0;
 
-    // Outer dark shadow behind spike
     ctx.fillStyle = '#1a1218';
     ctx.fillRect(x,     sy - 10, 2, 2);
     ctx.fillRect(x - 1, sy -  8, 4, 2);
@@ -660,7 +670,6 @@ function drawSpikesOnPlat(p) {
     ctx.fillRect(x - 3, sy -  4, 8, 2);
     ctx.fillRect(x - 3, sy -  2, 8, 2);
 
-    // Main iron body
     ctx.fillStyle = '#7a7e88';
     ctx.fillRect(x,     sy - 9, 2, 2);
     ctx.fillRect(x - 1, sy - 7, 4, 2);
@@ -668,23 +677,19 @@ function drawSpikesOnPlat(p) {
     ctx.fillRect(x - 3, sy - 3, 8, 2);
     ctx.fillRect(x - 3, sy - 1, 8, 2);
 
-    // Left face (slightly lighter)
     ctx.fillStyle = '#9aa0aa';
     ctx.fillRect(x,     sy - 9, 1, 2);
     ctx.fillRect(x - 1, sy - 7, 2, 2);
     ctx.fillRect(x - 2, sy - 5, 3, 2);
 
-    // Bright tip highlight
     ctx.fillStyle = '#d0d8e0';
     ctx.fillRect(x, sy - 10, 1, 1);
 
-    // Right face shadow
     ctx.fillStyle = '#505560';
     ctx.fillRect(x + 1, sy - 7, 2, 2);
     ctx.fillRect(x + 2, sy - 5, 2, 2);
     ctx.fillRect(x + 3, sy - 3, 2, 4);
 
-    // Blood accent — scales from dark dried to bright fresh with density
     const bloodR = (120 + density * 100)|0;
     const bloodA = 0.25 + density * 0.5;
     ctx.fillStyle = `rgba(${bloodR},0,0,${bloodA})`;
@@ -883,7 +888,7 @@ function frame(){
   for(const bt of S.bats) drawBat(bt);
   for(const p of S.plats){
     drawPlatform(p);
-    drawSpikesOnPlat(p);   // ← spikes drawn on top of each platform
+    drawSpikesOnPlat(p);
   }
   for(const c of S.coins) drawGold(c);
   for(const h of S.hearts) drawHeart(h);
