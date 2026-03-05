@@ -37,6 +37,8 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 #cpupbtn{ right:6px; }
 #cpupbtn:hover, #cpdownbtn:hover{ border-color:#ffdd00; }
 
+.checkpoint-upg{ background:rgba(40,60,90,0.18); border-bottom:1px solid rgba(120,180,255,0.25); padding:6px 6px 8px; border-radius:6px; }
+
 .panel {
   position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
   background:rgba(10,8,5,0.96); border:4px solid #aa8833;
@@ -78,7 +80,8 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
   <div id="score">FLOOR: 0</div>
   <div id="best">BEST: 0</div>
   <div id="coindisp">⚜ 0</div>
-  <div id="hearts">❤️❤️❤️</div>
+  <div id="verdisp" style="font-size:9px;color:#887755;letter-spacing:1px;margin-top:2px;">v0.22-checkpoints</div>
+<div id="hearts">❤️❤️❤️</div>
 </div>
 <button id="fsbtn" onclick="toggleFS()" title="Fullscreen">⛶</button>
 <button id="pausebtn" onclick="togglePause()">⏸</button>
@@ -277,8 +280,16 @@ function updateCheckpointUI(){
   const upOwned=ownedCPTiers(1);
   const dnOwned=ownedCPTiers(-1);
   const show=checkpointPhase && S && S.alive;
-  if(upBtn){ upBtn.style.display = (show && upOwned>0)?'flex':'none'; upBtn.textContent='▶'+(upOwned>0?(' '+cpSelUp+'/'+upOwned):''); }
-  if(dnBtn){ dnBtn.style.display = (show && dnOwned>0)?'flex':'none'; dnBtn.textContent='◀'+(dnOwned>0?(' '+cpSelDown+'/'+dnOwned):''); }
+
+  // Show actual floor for clarity: tier N = N*1000 floors
+  if(upBtn){
+    upBtn.style.display = (show && upOwned>0)?'flex':'none';
+    upBtn.textContent = (upOwned>0) ? ('▶ ' + (cpSelUp*1000) + ' ('+cpSelUp+'/'+upOwned+')') : '▶';
+  }
+  if(dnBtn){
+    dnBtn.style.display = (show && dnOwned>0)?'flex':'none';
+    dnBtn.textContent = (dnOwned>0) ? ('◀ ' + (cpSelDown*1000) + ' ('+cpSelDown+'/'+dnOwned+')') : '◀';
+  }
 }
 function cycleCheckpoint(dir){
   if(!checkpointPhase||!S||!S.alive) return;
@@ -1329,7 +1340,7 @@ function renderShop(which){
     const sellPrice=upgSellPrice(u.id);
     const canSell=lvl>0;
 
-    const div=document.createElement('div');div.className='upg';
+    const div=document.createElement('div');div.className='upg'+((u.id==='cp_up'||u.id==='cp_down')?' checkpoint-upg':'');
     const buyLabel=capped?'MAX':(req&&req.ok? (totalCoins>=cost?'⚜ '+cost:'🔒 '+cost) : '⛔ '+(req.need||cost));
     const rankLabel=capped
       ?`RANK ${lvl} <span style="color:#ffaa44">(MAX)</span>`
@@ -1410,6 +1421,7 @@ function restart(){
 }
 
 (function boot(){
+  console.log('Castle Climber build: v0.22-checkpoints');
   const save=loadSave();
   if(save){
     if(save.upgLevels){
