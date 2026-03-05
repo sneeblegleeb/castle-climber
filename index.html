@@ -666,47 +666,101 @@ function up(){
 const BOUNCE_COLORS=[[255,200,80],[80,200,255],[180,80,255],[80,255,120],[255,140,40]];
 
 function simTrajectory(sx,sy,vx0,vy0,totalSteps){
-  const grav=gravVal(),ab=airbrakeVal(),bc=bounceVal(),pf=frictionVal();
+  // Preview must mirror *actual* collision rules, especially on top-of-platform
+  // landings where IRON SABATONS (friction) applies. The live physics does NOT
+  // bounce upward on a clean top landing — it zeroes vy and applies friction.
+  const grav=gravVal(),ab=airbrakeVal(),bc=bounceVal();
   const hw=9,hh=12;
+
   let tx=sx,ty=sy,tvx=vx0,tvy=vy0;
+  let onG=false, gPlat=null;
+
   const segs=[{dots:[],bounced:false,bi:0}];
+
   for(let i=0;i<totalSteps;i++){
     const ptx=tx,pty=ty;
-    tvy+=grav;tvx*=ab;tx+=tvx;ty+=tvy;
+
+    // Integrate
+    if(onG && gPlat){
+      const lf=gPlat.icy?0.99:frictionVal();
+      tvx*=lf;
+      tx+=tvx;
+      ty=gPlat.y-hh;
+      tvy=0;
+
+      // If we've slid off the platform, go back to airborne integration next step.
+      if(tx+hw<=gPlat.x || tx-hw>=gPlat.x+gPlat.w){
+        onG=false; gPlat=null;
+      }
+    } else {
+      tvy+=grav;
+      tvx*=ab;
+      tx+=tvx;
+      ty+=tvy;
+    }
+
     let hit=false;
-    if(tx-hw<=WALL){tx=WALL+hw;tvx=Math.abs(tvx)*bc;hit=true;}
-    else if(tx+hw>=W-WALL){tx=W-WALL-hw;tvx=-Math.abs(tvx)*bc;hit=true;}
-    if(!hit){
+
+    // Walls always apply (even if sliding)
+    if(tx-hw<=WALL){tx=WALL+hw;tvx=Math.abs(tvx)*bc;hit=true;onG=false;gPlat=null;}
+    else if(tx+hw>=W-WALL){tx=W-WALL-hw;tvx=-Math.abs(tvx)*bc;hit=true;onG=false;gPlat=null;}
+
+    // Platforms (only when airborne; when onG we already constrain to gPlat)
+    if(!onG && !hit){
       for(const p of S.plats){
         const pR=p.x+p.w,pB=p.y+p.h;
         if(tx+hw<=p.x||tx-hw>=pR||ty+hh<=p.y||ty-hh>=pB) continue;
+
         const fromTop=(pty+hh)<=p.y,fromBot=(pty-hh)>=pB;
         const fromLeft=(ptx+hw)<=p.x,fromRight=(ptx-hw)>=pR;
+
         if(fromTop){
-          ty=p.y-hh;tvx*=pf;
-          if(Math.abs(tvx)<0.8&&Math.abs(tvy)<1.5){
+          // Match update(): land, zero vy, apply platform friction (incl. icy).
+          ty=p.y-hh;
+          tvy=0;
+          const lf=p.icy?0.99:frictionVal();
+          tvx*=lf;
+
+          onG=true; gPlat=p;
+          // If we're basically at rest, the trajectory ends here.
+          if(Math.abs(tvx)<0.15){
             segs[segs.length-1].dots.push({x:tx,y:ty});
             if(segs[segs.length-1].dots.length===0) segs.pop();
             return segs;
           }
-          tvy=-Math.abs(tvy)*0.5;hit=true;
+          // Not a "bounce" segment split; keep drawing the sliding path.
+          hit=false;
         }
         else if(fromBot){ty=pB+hh;tvy=Math.abs(tvy)*0.3;hit=true;}
         else if(fromLeft){tx=p.x-hw;tvx=-Math.abs(tvx)*bc;hit=true;}
         else if(fromRight){tx=pR+hw;tvx=Math.abs(tvx)*bc;hit=true;}
-        else{ty=p.y-hh;tvy=-Math.abs(tvy)*0.5;tvx*=pf;hit=true;}
+        else{
+          // Fallback: treat as top landing to stay conservative and match gameplay feel.
+          ty=p.y-hh;
+          tvy=0;
+          const lf=p.icy?0.99:frictionVal();
+          tvx*=lf;
+          onG=true; gPlat=p;
+          hit=false;
+        }
         break;
       }
     }
+
     segs[segs.length-1].dots.push({x:tx,y:ty});
+
+    // Only split trajectory segments on *true bounces* (walls / side / bottom hits),
+    // not on top landings that become ground-slides.
     if(hit){
       segs[segs.length-1].bounced=true;
       segs.push({dots:[],bounced:false,bi:segs.length});
     }
   }
+
   if(segs[segs.length-1].dots.length===0) segs.pop();
   return segs;
 }
+
 
 // ── Draw ──────────────────────────────────────────────────────────────────────
 
