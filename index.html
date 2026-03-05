@@ -94,6 +94,13 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 </div><!-- #game-wrap -->
 
 <script>
+// ── Crash guard (helps catch “freezes” that are actually exceptions) ─────────
+window.addEventListener('error', (e) => {
+  try{
+    console.error('GAME ERROR:', e.message, e.filename, e.lineno, e.colno, e.error);
+  }catch(_){/* noop */}
+});
+
 const C=document.getElementById('c'),ctx=C.getContext('2d');
 const FC=document.getElementById('floatcanvas'),fctx=FC.getContext('2d');
 const BW=360,BH=640;
@@ -918,9 +925,14 @@ function drawTimeSlowOverlay(){
   ctx.lineWidth = 1.5;
   const corners = [[2,2],[W-2,2],[2,H-2],[W-2,H-2]];
   const dirs     = [[1,1],[-1,1],[1,-1],[-1,-1]];
-  corners.forEach(([cx,cy],[dx,dy])=>{
-    ctx.beginPath();ctx.moveTo(cx,cy+dy*cSize);ctx.lineTo(cx,cy);ctx.lineTo(cx+dx*cSize,cy);ctx.stroke();
-  },dirs);
+  corners.forEach(([cx, cy], i) => {
+    const [dx, dy] = dirs[i];
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + dy * cSize);
+    ctx.lineTo(cx, cy);
+    ctx.lineTo(cx + dx * cSize, cy);
+    ctx.stroke();
+  });
 
   // Small indicator label in top-left
   const lvl = upgLevels['timeslow'];
@@ -1078,43 +1090,51 @@ function drawSky(){
 }
 
 function frame(){
-  if(S.alive&&!paused){
-    // timeSlowTimer counts in real frames (wall-clock), not game ticks.
-    if(timeSlowTimer>0){
-      timeSlowTimer--;
-      if(timeSlowTimer<=0) timeScale=1.0;
-    }
-    // Always call update() once per frame — physics deltas are scaled by
-    // timeScale inside update() so the game slows smoothly without ever
-    // skipping update() calls (which was the freeze bug).
-    update(S);
+  try{
+    if(S.alive&&!paused){
+        // timeSlowTimer counts in real frames (wall-clock), not game ticks.
+        if(timeSlowTimer>0){
+          timeSlowTimer--;
+          if(timeSlowTimer<=0) timeScale=1.0;
+        }
+        // Always call update() once per frame — physics deltas are scaled by
+        // timeScale inside update() so the game slows smoothly without ever
+        // skipping update() calls (which was the freeze bug).
+        update(S);
+      }
+      drawSky();
+      drawCastleWall();
+      for(const bt of S.bats) drawBat(bt);
+      for(const p of S.plats){
+        drawPlatform(p);
+        drawSpikesOnPlat(p);
+      }
+      for(const c of S.coins) drawGold(c);
+      for(const h of S.hearts) drawHeart(h);
+      drawMushrooms();
+      drawKnight();
+      drawWalls();
+      // Time-slow overlay sits above world geometry but under vignette/scanlines
+      drawTimeSlowOverlay();
+      drawSling();
+      if(paused){ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,W,H);}
+      const vig=ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
+      vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,0.45)');
+      ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
+      ctx.fillStyle='rgba(0,0,0,0.04)';for(let i=0;i<H;i+=2)ctx.fillRect(0,i,W,1);
+      if(S.pl.onG&&!drag&&!paused&&S.tick%60<38){
+        const py=S.pl.y-S.cam+S.pl.h/2+22;
+        ctx.fillStyle='rgba(255,220,120,.7)';ctx.font='bold 9px monospace';ctx.textAlign='center';
+        ctx.fillText('DRAG ANYWHERE TO LAUNCH!',W/2,py);ctx.textAlign='left';
+      }
+      drawFloats();
+
+  } catch (err){
+    console.error('FRAME CRASH:', err);
+    timeScale = 1.0;
+    timeSlowTimer = 0;
+    try{ drawFloats(); }catch(_){/* noop */}
   }
-  drawSky();
-  drawCastleWall();
-  for(const bt of S.bats) drawBat(bt);
-  for(const p of S.plats){
-    drawPlatform(p);
-    drawSpikesOnPlat(p);
-  }
-  for(const c of S.coins) drawGold(c);
-  for(const h of S.hearts) drawHeart(h);
-  drawMushrooms();
-  drawKnight();
-  drawWalls();
-  // Time-slow overlay sits above world geometry but under vignette/scanlines
-  drawTimeSlowOverlay();
-  drawSling();
-  if(paused){ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,W,H);}
-  const vig=ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
-  vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,0.45)');
-  ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
-  ctx.fillStyle='rgba(0,0,0,0.04)';for(let i=0;i<H;i+=2)ctx.fillRect(0,i,W,1);
-  if(S.pl.onG&&!drag&&!paused&&S.tick%60<38){
-    const py=S.pl.y-S.cam+S.pl.h/2+22;
-    ctx.fillStyle='rgba(255,220,120,.7)';ctx.font='bold 9px monospace';ctx.textAlign='center';
-    ctx.fillText('DRAG ANYWHERE TO LAUNCH!',W/2,py);ctx.textAlign='left';
-  }
-  drawFloats();
   requestAnimationFrame(frame);
 }
 
