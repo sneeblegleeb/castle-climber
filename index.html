@@ -1305,18 +1305,18 @@ function frame(){
       drawCastleWall();
       drawWalls();
       for(const bt of S.bats) drawBat(bt);
-      // Desired draw order: torches, platforms, mushrooms, player, spikes
-      drawTorches();
+      // Desired draw order: platforms, pickups, player, hazards, torches (player behind hazards)
       for(const p of S.plats) drawPlatform(p);
       for(const c of S.coins) drawGold(c);
       for(const h of S.hearts) drawHeart(h);
-      drawMushrooms();
       drawKnight();
+      drawMushrooms();
       for(const p of S.plats) drawSpikesOnPlat(p);
-      // Time-slow overlay sits above world geometry but under vignette/scanlines
+      drawTorches();
+      // Time-slow overlay sits above world geometry
       drawTimeSlowOverlay();
       drawSling();
-      if(paused){ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,W,H);}
+if(paused){ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,W,H);}
       const vig=ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
       vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,0.45)');
       ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
