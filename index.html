@@ -285,9 +285,14 @@ function mkS(savedPos){
   const s={
     pl:{x:sx,y:sy,vx:0,vy:0,w:18,h:24,onG:false,coyote:0,
         hp:shp,maxHp:hp,hurtTimer:0,fallVy:0,damageFlash:0,
-        airJumpsLeft:maxAirJumps(),sporeExposure:0},
+        airJumpsLeft:maxAirJumps(),sporeExposure:0,
+        lastGroundY:sy},                // P3: for outside-fall kill threshold
     // PHASE 1: cam is now a {x, y} object. cam.x is locked to 0 in tower mode.
     cam:{ x: 0, y: sy - H * 0.38 },
+    // P3: mode state machine
+    worldMode: 'tower',   // 'tower' | 'exiting' | 'outside' | 'entering'
+    camExitT: 0,          // tick counter for exit camera lerp
+    exitSide: null,       // 'left' | 'right' — which wall the player exited through
     // PHASE 2: tower references
     activeTower: initTower,
     towers: [initTower],
@@ -305,14 +310,17 @@ function mkS(savedPos){
   return s;
 }
 
-function mkBat(wy,plY){
+// P5: homeX gives each bat a world-X anchor for idle drift bounds
+function mkBat(wy, plY, homeX){
   const minDist=batAgroRadius()+50;
   if(plY!==undefined&&Math.abs(wy-plY)<minDist){
     wy = wy<plY ? plY-minDist : plY+minDist;
   }
-  return{x:WALL+10+Math.random()*(W-WALL*2-20),wy,vx:(Math.random()-.5)*1.0,
-    flap:Math.random()*Math.PI*2,state:'idle',agroTimer:0,retreatTimer:0,
-    tx:0,ty:0,dvx:0,dvy:0,hurtTimer:0};
+  const bx = homeX !== undefined ? homeX
+    : WALL + 10 + Math.random()*(W - WALL*2 - 20);
+  return{x:bx, homeX:bx, wy, vx:(Math.random()-.5)*1.0,
+    flap:Math.random()*Math.PI*2, state:'idle', agroTimer:0, retreatTimer:0,
+    tx:0, ty:0, dvx:0, dvy:0, hurtTimer:0};
 }
 
 function platId(wy){return Math.round(wy/10);}
@@ -338,8 +346,20 @@ function gen(s){
 
   const idle=s.bats.filter(bt=>bt.state==='idle').length;
   let add=8-idle;
-  // PHASE 1: use s.cam.y
-  while(add-->0) s.bats.push(mkBat(s.cam.y+(Math.random()-.5)*H*2,s.pl.y));
+  // P3/P5: place new bats at a world-X that makes sense for the current mode
+  while(add-->0){
+    const batY = s.cam.y + (Math.random()-.5)*H*2;
+    let batHomeX;
+    if(s.worldMode==='tower'){
+      const tw=s.activeTower;
+      batHomeX = tw.worldX + tw.wallThickness + 10
+               + Math.random()*(tw.width - tw.wallThickness*2 - 20);
+    } else {
+      // Outside: scatter around current camera X
+      batHomeX = s.cam.x + W*0.1 + Math.random()*W*0.8;
+    }
+    s.bats.push(mkBat(batY, s.pl.y, batHomeX));
+  }
 }
 
 function platOverlap(s,wx,wy,r){
@@ -408,12 +428,20 @@ function addP(s,wy){
 
 function cull(s){
   const margin=H*0.75;
-  // PHASE 1: use s.cam.y
   const t=s.cam.y-margin, b=s.cam.y+H+margin;
   s.plats=s.plats.filter(p=>p.y>t&&p.y<b);
   s.coins=s.coins.filter(c=>!c.collected&&c.y>t&&c.y<b);
   s.hearts=s.hearts.filter(h=>!h.collected&&h.y>t&&h.y<b);
-  s.bats=s.bats.filter(bt=>bt.wy>t-H*1.5&&bt.wy<b+H*1.5);
+  // P5: in outside mode also cull bats that have drifted far off-screen horizontally
+  const xMargin = W * 2;
+  s.bats=s.bats.filter(bt=>{
+    if(bt.wy<=t-H*1.5||bt.wy>=b+H*1.5) return false;
+    if(s.worldMode==='outside'||s.worldMode==='exiting'){
+      const bsx=bt.x-s.cam.x;
+      if(bsx<-xMargin||bsx>W+xMargin) return false;
+    }
+    return true;
+  });
   s.mushrooms=s.mushrooms.filter(m=>m.y>t&&m.y<b);
 }
 
@@ -471,15 +499,30 @@ function updateBats(s){
   const scale=batDifficultyScale(s.score);
   const diveSpeed=BAT_DIVE_SPEED*scale;
   const agroRate=Math.min(0.18, BAT_AGRO_RATE*scale);
+
+  // P5: helper — horizontal bounds depend on mode
+  const inTower = s.worldMode==='tower' || s.worldMode==='exiting';
+  function batBounceX(bt, range){
+    if(inTower){
+      const tw=s.activeTower;
+      const lb=tw.worldX+tw.wallThickness+8;
+      const rb=tw.worldX+tw.width-tw.wallThickness-8;
+      if(bt.x<lb||bt.x>rb) bt.vx*=-1;
+    } else {
+      // P5: soft home boundary — reflect when too far from spawn X
+      if(Math.abs(bt.x - bt.homeX) > range) bt.vx*=-1;
+    }
+  }
+
   for(const bt of s.bats){
     bt.flap+=0.14;
     if(bt.hurtTimer>0) bt.hurtTimer--;
     if(bt.state==='idle'){
       bt.x+=bt.vx;
       bt.wy+=Math.sin(bt.flap*0.25)*0.3;
-      if(bt.x<WALL+8||bt.x>W-WALL-8) bt.vx*=-1;
+      batBounceX(bt, 150);
       bt.vx=Math.max(-BAT_IDLE_SPEED,Math.min(BAT_IDLE_SPEED,bt.vx));
-      const bsy=bt.wy-s.cam.y; // PHASE 1
+      const bsy=bt.wy-s.cam.y;
       const distToPlayer=Math.sqrt((bt.x-pl.x)**2+(bt.wy-pl.y)**2);
       if(bsy>-50&&bsy<H+50&&!paused&&distToPlayer>batAgroRadius()&&s.tick%BAT_AGRO_PERIOD===0&&Math.random()<agroRate){
         bt.state='agro';bt.agroTimer=90+Math.random()*60;
@@ -487,7 +530,7 @@ function updateBats(s){
     } else if(bt.state==='agro'){
       bt.flap+=0.06;bt.x+=bt.vx*1.2;
       bt.wy+=(pl.y-bt.wy)*0.008;
-      if(bt.x<WALL+8||bt.x>W-WALL-8) bt.vx*=-1;
+      batBounceX(bt, 200);  // P5: slightly wider range when agro
       if(--bt.agroTimer<=0){
         bt.state='diving';
         const dx=pl.x-bt.x,dy=pl.y-bt.wy,d=Math.sqrt(dx*dx+dy*dy)||1;
@@ -500,12 +543,15 @@ function updateBats(s){
         takeDamage(s,1,'🦇 HIT!');
         bt.state='retreating';bt.retreatTimer=100;bt.dvx*=-0.7;bt.dvy=-3;bt.hurtTimer=45;
       }
-      const bsy=bt.wy-s.cam.y; // PHASE 1
-      if(bsy<-H||bsy>H*2||bt.x<WALL||bt.x>W-WALL){
+      // P5: camera-relative out-of-bounds check (works for both tower and outside)
+      const bsx=bt.x-s.cam.x, bsy=bt.wy-s.cam.y;
+      if(bsy<-H||bsy>H*2||bsx<-W*0.6||bsx>W*1.6){
         bt.state='retreating';bt.retreatTimer=80;bt.dvx*=-0.5;bt.dvy=-2;
       }
     } else if(bt.state==='retreating'){
       bt.x+=bt.dvx*0.88;bt.wy+=bt.dvy;bt.dvx*=0.9;bt.dvy*=0.88;
+      // P5: gently steer retreating bats back toward their home X when outside
+      if(!inTower) bt.dvx += (bt.homeX - bt.x) * 0.008;
       if(--bt.retreatTimer<=0){bt.state='idle';bt.vx=(Math.random()-.5)*BAT_IDLE_SPEED*2;}
     }
   }
@@ -524,28 +570,45 @@ function update(s){
   if(pl.hurtTimer>0) pl.hurtTimer--;
   if(pl.damageFlash>0) pl.damageFlash--;
 
-  // PHASE 2: wall collision uses tower bounds and respects wall breaks.
-  // For the initial tower (worldX=0, width=W) this is numerically identical
-  // to the original WALL / W-WALL clamps, but now holes in the wall are passable.
+  // P3: wall collision + exit detection — only applies in tower mode.
+  // In exiting/outside/entering the walls are no longer an obstacle.
   const bounce = bounceVal();
-  const tw = s.activeTower;
-  const leftInner  = tw.worldX + tw.wallThickness;
-  const rightInner = tw.worldX + tw.width - tw.wallThickness;
+  if(s.worldMode === 'tower'){
+    const tw = s.activeTower;
+    const leftInner  = tw.worldX + tw.wallThickness;
+    const rightInner = tw.worldX + tw.width - tw.wallThickness;
 
-  if(pl.x - pl.w/2 < leftInner){
-    if(!isInBreak(tw, 'left', pl.y)){
-      pl.x = leftInner + pl.w/2;
-      pl.vx = Math.abs(pl.vx) * bounce;
+    // Left wall — check for exit first, then collision
+    if(pl.x - pl.w/2 < leftInner){
+      if(isInBreak(tw, 'left', pl.y)){
+        // Player is crossing the inner face through a break — begin exit
+        s.worldMode  = 'exiting';
+        s.exitSide   = 'left';
+        s.camExitT   = 0;
+      } else {
+        pl.x  = leftInner + pl.w/2;
+        pl.vx = Math.abs(pl.vx) * bounce;
+      }
+    }
+    // Right wall
+    if(pl.x + pl.w/2 > rightInner){
+      if(isInBreak(tw, 'right', pl.y)){
+        s.worldMode  = 'exiting';
+        s.exitSide   = 'right';
+        s.camExitT   = 0;
+      } else {
+        pl.x  = rightInner - pl.w/2;
+        pl.vx = -Math.abs(pl.vx) * bounce;
+      }
     }
   }
-  if(pl.x + pl.w/2 > rightInner){
-    if(!isInBreak(tw, 'right', pl.y)){
-      pl.x = rightInner - pl.w/2;
-      pl.vx = -Math.abs(pl.vx) * bounce;
-    }
-  }
+  // (entering mode: re-entry wall clamping handled in Phase 4)
 
-  if(pl.onG){pl.coyote=upgVal('coyote')|0;pl.airJumpsLeft=maxAirJumps();}
+  if(pl.onG){
+    pl.coyote=upgVal('coyote')|0;
+    pl.airJumpsLeft=maxAirJumps();
+    pl.lastGroundY=pl.y;    // P3: keep track for outside-fall kill
+  }
   else if(pl.coyote>0) pl.coyote--;
   pl.onG=false;
 
@@ -592,7 +655,7 @@ function update(s){
       coin.collected=true;
       s.collectedCoins.add(coin.id);
       s.session_coins+=val;totalCoins+=val;
-      addFloat(coin.x,coin.y-s.cam.y,val>1?'+'+val+' ⚜':'+⚜','#ffcc44'); // PHASE 1
+      addFloat(coin.x-s.cam.x,coin.y-s.cam.y,val>1?'+'+val+' ⚜':'+⚜','#ffcc44');
     }
   }
 
@@ -605,10 +668,10 @@ function update(s){
       s.collectedHearts.add(heart.id);
       if(pl.hp<pl.maxHp){
         pl.hp=Math.min(pl.maxHp,pl.hp+1);
-        addFloat(heart.x,heart.y-s.cam.y,'❤️ +1','#ff88aa'); // PHASE 1
+        addFloat(heart.x-s.cam.x,heart.y-s.cam.y,'❤️ +1','#ff88aa');
         updateHeartsUI(pl);
       } else {
-        addFloat(heart.x,heart.y-s.cam.y,'FULL','#ff88aa'); // PHASE 1
+        addFloat(heart.x-s.cam.x,heart.y-s.cam.y,'FULL','#ff88aa');
       }
     }
   }
@@ -616,8 +679,23 @@ function update(s){
   updateMushrooms(s);
   updateBats(s);
 
-  // PHASE 1: update cam.y (x stays 0 in tower mode — Phase 3 will handle the rest)
+  // P3: mode-aware camera
+  // cam.y always tracks player vertically
   s.cam.y += (pl.y - H*.4 - s.cam.y) * .07;
+
+  // cam.x depends on mode:
+  //   tower   → hard-locked to tower's worldX (screen stays stable)
+  //   exiting → fast lerp toward player-centered, then flip to outside
+  //   outside → normal 0.07 lerp, same as Y
+  if(s.worldMode === 'tower'){
+    s.cam.x = s.activeTower.worldX;
+  } else if(s.worldMode === 'exiting'){
+    s.camExitT++;
+    s.cam.x += (pl.x - W/2 - s.cam.x) * 0.12;  // faster lerp during transition
+    if(s.camExitT > 40) s.worldMode = 'outside';
+  } else if(s.worldMode === 'outside'){
+    s.cam.x += (pl.x - W/2 - s.cam.x) * 0.07;
+  }
 
   s.score=Math.floor(-pl.y/10);
   if(s.score>best) best=s.score;
@@ -627,20 +705,26 @@ function update(s){
 
   if(++saveTimer>300){saveTimer=0;saveGame(s);}
 
-  document.getElementById('score').textContent='FLOOR: '+s.score;
+  const outsideTag = (s.worldMode==='outside'||s.worldMode==='exiting') ? '⚔ OUTSIDE · ' : '';
+  document.getElementById('score').textContent=outsideTag+'FLOOR: '+s.score;
   document.getElementById('best').textContent='BEST: '+best+' / '+lowest;
   document.getElementById('coindisp').textContent='⚜ '+totalCoins;
   updateHeartsUI(pl);
 
-  // PHASE 1: fall-off-bottom uses cam.y
-  if(pl.y-s.cam.y>H+220){pl.hp=0;killPlayer(s);}
+  // P3: fall kill — outside uses distance-from-last-ground; tower uses screen-bottom
+  if(s.worldMode==='outside'||s.worldMode==='exiting'){
+    // No floor outside — if player falls 3000 units below where they last stood, die
+    if(pl.y > pl.lastGroundY + 3000){ pl.hp=0; killPlayer(s); }
+  } else {
+    if(pl.y - s.cam.y > H+220){ pl.hp=0; killPlayer(s); }
+  }
 }
 
 function takeDamage(s,dmg,label){
   const pl=s.pl;
   if(pl.hurtTimer>0) return;
   pl.hp=Math.max(0,pl.hp-dmg);pl.hurtTimer=90;pl.damageFlash=20;
-  addFloat(pl.x,pl.y-s.cam.y-20,label||'-'+dmg+'❤️','#ff4444'); // PHASE 1
+  addFloat(pl.x-s.cam.x,pl.y-s.cam.y-20,label||'-'+dmg+'❤️','#ff4444');
   updateHeartsUI(pl);
   if(pl.hp<=0) killPlayer(s);
 }
@@ -684,18 +768,18 @@ function simTrajectory(sx,sy,vx0,vy0,totalSteps){
   let tx=sx,ty=sy,tvx=vx0,tvy=vy0;
   const segs=[{dots:[],bounced:false,bi:0}];
 
-  // PHASE 2: use tower inner bounds for wall bounce in preview arc
-  const tw = S.activeTower;
-  const tLeft  = tw.worldX + tw.wallThickness;
-  const tRight = tw.worldX + tw.width - tw.wallThickness;
-
   for(let i=0;i<totalSteps;i++){
     const ptx=tx,pty=ty;
     tvy+=grav;tvx*=ab;tx+=tvx;ty+=tvy;
     let hit=false;
-    // PHASE 2: use tower-aware bounds (numerically same as WALL/W-WALL for init tower)
-    if(tx-hw<=tLeft){tx=tLeft+hw;tvx=Math.abs(tvx)*bc;hit=true;}
-    else if(tx+hw>=tRight){tx=tRight-hw;tvx=-Math.abs(tvx)*bc;hit=true;}
+    // P3: only bounce off tower walls when actually inside a tower
+    if(S.worldMode==='tower'){
+      const tw = S.activeTower;
+      const tLeft  = tw.worldX + tw.wallThickness;
+      const tRight = tw.worldX + tw.width - tw.wallThickness;
+      if(tx-hw<=tLeft){tx=tLeft+hw;tvx=Math.abs(tvx)*bc;hit=true;}
+      else if(tx+hw>=tRight){tx=tRight-hw;tvx=-Math.abs(tvx)*bc;hit=true;}
+    }
     if(!hit){
       for(const p of S.plats){
         const pR=p.x+p.w,pB=p.y+p.h;
@@ -860,27 +944,27 @@ function drawTowerWalls(){
 }
 
 function drawPlatform(p){
-  // PHASE 1: S.cam.y
   const sy=(p.y-S.cam.y)|0;
+  const px=(p.x-S.cam.x)|0;  // P3: world→screen X
   if(p.icy){
-    ctx.fillStyle='#445566';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
-    ctx.fillStyle='#7aaccc';ctx.fillRect(p.x|0,sy,p.w|0,4);
-    ctx.fillStyle='#aaddee';ctx.fillRect(p.x|0,sy,p.w|0,2);
+    ctx.fillStyle='#445566';ctx.fillRect(px,sy,p.w|0,p.h);
+    ctx.fillStyle='#7aaccc';ctx.fillRect(px,sy,p.w|0,4);
+    ctx.fillStyle='#aaddee';ctx.fillRect(px,sy,p.w|0,2);
     ctx.fillStyle='#cceeff';
-    for(let i=6;i<p.w-4;i+=14) ctx.fillRect((p.x+i)|0,sy+1,4,2);
-    ctx.fillStyle='rgba(180,230,255,0.12)';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
-    ctx.fillStyle='#334455';ctx.fillRect((p.x+2)|0,(sy+p.h)|0,p.w|0,4);
+    for(let i=6;i<p.w-4;i+=14) ctx.fillRect(px+i,sy+1,4,2);
+    ctx.fillStyle='rgba(180,230,255,0.12)';ctx.fillRect(px,sy,p.w|0,p.h);
+    ctx.fillStyle='#334455';ctx.fillRect(px+2,(sy+p.h)|0,p.w|0,4);
   } else {
-    ctx.fillStyle='#44403a';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
-    ctx.fillStyle='#6a6258';ctx.fillRect(p.x|0,sy,p.w|0,4);
-    ctx.fillStyle='#7a7268';ctx.fillRect(p.x|0,sy,p.w|0,2);
+    ctx.fillStyle='#44403a';ctx.fillRect(px,sy,p.w|0,p.h);
+    ctx.fillStyle='#6a6258';ctx.fillRect(px,sy,p.w|0,4);
+    ctx.fillStyle='#7a7268';ctx.fillRect(px,sy,p.w|0,2);
     ctx.fillStyle='#50483e';
-    for(let i=4;i<p.w-4;i+=18) ctx.fillRect((p.x+i)|0,sy-5,10,6);
+    for(let i=4;i<p.w-4;i+=18) ctx.fillRect(px+i,sy-5,10,6);
     ctx.fillStyle='#33302a';
-    ctx.fillRect(p.x|0,sy+6,p.w|0,2);
-    for(let i=20;i<p.w;i+=20) ctx.fillRect((p.x+i)|0,sy,2,p.h);
-    ctx.fillStyle='rgba(0,0,0,0.25)';ctx.fillRect((p.x+2)|0,(sy+p.h)|0,p.w|0,4);
-    if(p.torch) drawTorch(p.x+p.w/2,sy-2);
+    ctx.fillRect(px,sy+6,p.w|0,2);
+    for(let i=20;i<p.w;i+=20) ctx.fillRect(px+i,sy,2,p.h);
+    ctx.fillStyle='rgba(0,0,0,0.25)';ctx.fillRect(px+2,(sy+p.h)|0,p.w|0,4);
+    if(p.torch) drawTorch(px+p.w/2,sy-2);
   }
 }
 
@@ -888,7 +972,6 @@ function drawSpikesOnPlat(p) {
   const spikes = getPlatSpikes(p);
   if (!spikes.length) return;
 
-  // PHASE 1: S.cam.y
   const sy = (p.y - S.cam.y)|0;
 
   const absScore  = Math.abs(p.y) / 10;
@@ -896,7 +979,7 @@ function drawSpikesOnPlat(p) {
   const glowAlpha = 0.08 + density * 0.14;
 
   for (const wx of spikes) {
-    const x = wx|0;
+    const x = (wx - S.cam.x)|0;  // P3: world→screen X
     ctx.fillStyle = `rgba(255,40,0,${glowAlpha})`;
     ctx.fillRect(x - 5, (sy - 10)|0, 10, 10);
     ctx.fillStyle = '#1a1218';
@@ -931,10 +1014,9 @@ function drawSpikesOnPlat(p) {
 
 function drawMushrooms(){
   for(const m of S.mushrooms){
-    // PHASE 1: S.cam.y
     const sy = (m.y - S.cam.y)|0;
     if(sy < -60 || sy > H+20) continue;
-    const mx = m.x|0;
+    const mx = (m.x - S.cam.x)|0;  // P3: world→screen X
 
     if(m.cloud){
       const t = m.cloud.timer / m.cloud.maxTimer;
@@ -997,26 +1079,25 @@ function drawMushrooms(){
 
 function drawGold(coin){
   if(coin.collected) return;
-  // PHASE 1: S.cam.y
   const sy=(coin.y-S.cam.y+Math.sin(coin.bob)*3)|0;
-  const g=ctx.createRadialGradient(coin.x,sy,0,coin.x,sy,12);
+  const cx=(coin.x-S.cam.x)|0;  // P3: world→screen X
+  const g=ctx.createRadialGradient(cx,sy,0,cx,sy,12);
   g.addColorStop(0,'rgba(255,220,80,0.3)');g.addColorStop(1,'rgba(255,180,0,0)');
-  ctx.fillStyle=g;ctx.beginPath();ctx.arc(coin.x,sy,12,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#cc9900';ctx.fillRect((coin.x-6)|0,(sy-6)|0,12,12);
-  ctx.fillStyle='#ffcc00';ctx.fillRect((coin.x-5)|0,(sy-6)|0,10,12);
-  ctx.fillStyle='#ffe066';ctx.fillRect((coin.x-4)|0,(sy-5)|0,8,10);
-  ctx.fillStyle='#fff8aa';ctx.fillRect((coin.x-3)|0,(sy-4)|0,3,3);
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,sy,12,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#cc9900';ctx.fillRect((cx-6)|0,(sy-6)|0,12,12);
+  ctx.fillStyle='#ffcc00';ctx.fillRect((cx-5)|0,(sy-6)|0,10,12);
+  ctx.fillStyle='#ffe066';ctx.fillRect((cx-4)|0,(sy-5)|0,8,10);
+  ctx.fillStyle='#fff8aa';ctx.fillRect((cx-3)|0,(sy-4)|0,3,3);
   ctx.fillStyle='#aa7700';
-  ctx.fillRect((coin.x-1)|0,(sy-3)|0,2,6);
-  ctx.fillRect((coin.x-3)|0,(sy-1)|0,6,2);
-  ctx.fillRect((coin.x-1)|0,(sy-5)|0,2,2);
+  ctx.fillRect((cx-1)|0,(sy-3)|0,2,6);
+  ctx.fillRect((cx-3)|0,(sy-1)|0,6,2);
+  ctx.fillRect((cx-1)|0,(sy-5)|0,2,2);
 }
 
 function drawHeart(heart){
   if(heart.collected) return;
-  // PHASE 1: S.cam.y
   const sy=(heart.y-S.cam.y+Math.sin(heart.bob)*3)|0;
-  const hx=heart.x|0;
+  const hx=(heart.x-S.cam.x)|0;  // P3: world→screen X
   const grd=ctx.createRadialGradient(hx,sy,0,hx,sy,16);
   grd.addColorStop(0,'rgba(255,100,140,0.35)');grd.addColorStop(1,'rgba(255,50,80,0)');
   ctx.fillStyle=grd;ctx.beginPath();ctx.arc(hx,sy,16,0,Math.PI*2);ctx.fill();
@@ -1039,8 +1120,8 @@ function drawKnight(){
   const pl=S.pl;
   const flash=pl.damageFlash>0&&Math.floor(pl.damageFlash/4)%2===0;
   if(flash) ctx.globalAlpha=0.35;
-  // PHASE 1: S.cam.y
-  const x=(pl.x-pl.w/2)|0,y=(pl.y-pl.h/2-S.cam.y)|0,w=pl.w,h=pl.h;
+  // P3: world→screen X and Y
+  const x=(pl.x-S.cam.x-pl.w/2)|0,y=(pl.y-pl.h/2-S.cam.y)|0,w=pl.w,h=pl.h;
   const moving=Math.abs(pl.vx)>0.5,legOff=pl.onG&&moving?Math.sin(S.tick*0.3)*3:0;
   ctx.fillStyle='rgba(0,0,0,0.25)';ctx.beginPath();ctx.ellipse(x+w/2,y+h+3,w/2-2,4,0,0,Math.PI*2);ctx.fill();
   ctx.fillStyle='#555566';ctx.fillRect(x+2,y+h-8,6,8+legOff);ctx.fillRect(x+w-8,y+h-8,6,8-legOff);
@@ -1080,26 +1161,27 @@ function drawKnight(){
 }
 
 function drawBat(bt){
-  // PHASE 1: S.cam.y
   const sy=(bt.wy-S.cam.y)|0;
+  const bsx=(bt.x-S.cam.x)|0;  // P3: world→screen X
   if(sy<-30||sy>H+30) return;
+  if(bsx<-30||bsx>W+30) return;  // P3: skip off-screen horizontal
   const agro=bt.state==='agro'||bt.state==='diving';
   const flash=bt.hurtTimer>0&&Math.floor(bt.hurtTimer/3)%2===0;
   const wing=Math.sin(bt.flap)*(agro?10:6);
   if(flash) ctx.globalAlpha=0.4;
-  if(agro&&bt.state==='agro'){ctx.fillStyle='rgba(255,140,0,0.12)';ctx.beginPath();ctx.arc(bt.x,sy,10,0,Math.PI*2);ctx.fill();}
-  if(agro&&bt.state==='diving'){ctx.fillStyle='rgba(255,100,0,0.18)';ctx.beginPath();ctx.arc(bt.x,sy,12,0,Math.PI*2);ctx.fill();}
+  if(agro&&bt.state==='agro'){ctx.fillStyle='rgba(255,140,0,0.12)';ctx.beginPath();ctx.arc(bsx,sy,10,0,Math.PI*2);ctx.fill();}
+  if(agro&&bt.state==='diving'){ctx.fillStyle='rgba(255,100,0,0.18)';ctx.beginPath();ctx.arc(bsx,sy,12,0,Math.PI*2);ctx.fill();}
   ctx.fillStyle=agro?'#3d1010':'#2a2040';
-  ctx.fillRect((bt.x-3)|0,(sy-2)|0,6,5);
-  ctx.fillRect((bt.x-12)|0,(sy-2+wing)|0,9,4);
-  ctx.fillRect((bt.x+3)|0,(sy-2+wing)|0,9,4);
-  ctx.fillRect((bt.x-14)|0,(sy+1+wing)|0,3,2);
-  ctx.fillRect((bt.x+11)|0,(sy+1+wing)|0,3,2);
+  ctx.fillRect((bsx-3)|0,(sy-2)|0,6,5);
+  ctx.fillRect((bsx-12)|0,(sy-2+wing)|0,9,4);
+  ctx.fillRect((bsx+3)|0,(sy-2+wing)|0,9,4);
+  ctx.fillRect((bsx-14)|0,(sy+1+wing)|0,3,2);
+  ctx.fillRect((bsx+11)|0,(sy+1+wing)|0,3,2);
   ctx.fillStyle=agro?'#5a1818':'#3d3060';
-  ctx.fillRect((bt.x-11)|0,(sy-1+wing)|0,7,2);
-  ctx.fillRect((bt.x+4)|0,(sy-1+wing)|0,7,2);
+  ctx.fillRect((bsx-11)|0,(sy-1+wing)|0,7,2);
+  ctx.fillRect((bsx+4)|0,(sy-1+wing)|0,7,2);
   ctx.fillStyle=bt.state==='diving'?'#ff6600':agro?'#cc6600':'#441111';
-  ctx.fillRect((bt.x-2)|0,(sy-1)|0,1,1);ctx.fillRect((bt.x+1)|0,(sy-1)|0,1,1);
+  ctx.fillRect((bsx-2)|0,(sy-1)|0,1,1);ctx.fillRect((bsx+1)|0,(sy-1)|0,1,1);
   if(flash) ctx.globalAlpha=1;
 }
 
@@ -1107,8 +1189,8 @@ function drawSling(){
   if(!drag) return;
   const pl=S.pl;
   const ps={x:pl.x,y:pl.y};
-  // PHASE 1: camY from S.cam.y
   const camY=S.cam.y;
+  const camX=S.cam.x;  // P3
   const dx=drag.sx-drag.cx,dy=drag.sy-drag.cy,dist=Math.sqrt(dx*dx+dy*dy);
   if(dist<4) return;
   const canFire=canLaunch();
@@ -1139,14 +1221,14 @@ function drawSling(){
       const alpha=fade*segAlpha;
       if(alpha<0.02) return;
       ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
-      ctx.beginPath();ctx.arc(d.x,d.y-camY,r,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(d.x-camX,d.y-camY,r,0,Math.PI*2);ctx.fill();
     });
     if(seg.bounced&&si<drawSegs.length-1&&seg.dots.length>0){
       const last=seg.dots[seg.dots.length-1];
-      const lsy=last.y-camY;
+      const lsx=last.x-camX, lsy=last.y-camY;
       ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},0.9)`;ctx.lineWidth=1.5;
-      ctx.beginPath();ctx.moveTo(last.x-4,lsy-4);ctx.lineTo(last.x+4,lsy+4);ctx.stroke();
-      ctx.beginPath();ctx.moveTo(last.x+4,lsy-4);ctx.lineTo(last.x-4,lsy+4);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(lsx-4,lsy-4);ctx.lineTo(lsx+4,lsy+4);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(lsx+4,lsy-4);ctx.lineTo(lsx-4,lsy+4);ctx.stroke();
     }
   });
   ctx.globalAlpha=1;
@@ -1190,7 +1272,8 @@ function drawSky(){
 function frame(){
   if(S.alive&&!paused) update(S);
   drawSky();
-  drawCastleWall();
+  // P3: castle-wall brick background only makes sense inside a tower
+  if(S.worldMode==='tower'||S.worldMode==='exiting') drawCastleWall();
   for(const bt of S.bats) drawBat(bt);
   for(const p of S.plats){
     drawPlatform(p);
