@@ -26,15 +26,17 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 #pausebtn:hover, #fsbtn:hover { border-color:#ffdd00; }
 
 #cpupbtn, #cpdownbtn{
-  position:absolute; top:50%; transform:translateY(-50%);
-  background:rgba(0,0,0,0.55); border:2px solid #888;
-  color:#fff; font-family:monospace; font-size:18px;
-  width:36px; height:52px; cursor:pointer;
+  position:absolute; left:8px;
+  background:rgba(0,0,0,0.60); border:2px solid #888;
+  color:#fff; font-family:monospace; font-size:20px; font-weight:bold;
+  width:40px; height:40px; cursor:pointer;
   display:none; align-items:center; justify-content:center;
   z-index:12;
+  border-radius:10px;
+  box-shadow:0 0 10px rgba(0,0,0,0.35);
 }
-#cpdownbtn{ left:6px; }
-#cpupbtn{ right:6px; }
+#cpupbtn{ top:42%; }
+#cpdownbtn{ top:52%; }
 #cpupbtn:hover, #cpdownbtn:hover{ border-color:#ffdd00; }
 
 .checkpoint-upg{ background:rgba(40,60,90,0.18); border-bottom:1px solid rgba(120,180,255,0.25); padding:6px 6px 8px; border-radius:6px; }
@@ -85,8 +87,9 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 </div>
 <button id="fsbtn" onclick="toggleFS()" title="Fullscreen">⛶</button>
 <button id="pausebtn" onclick="togglePause()">⏸</button>
-<button id="cpdownbtn" onclick="cycleCheckpoint(-1)" title="Checkpoint Down">◀</button>
-<button id="cpupbtn" onclick="cycleCheckpoint(1)" title="Checkpoint Up">▶</button>
+<button id="cpupbtn" onclick="cycleCheckpoint(1)" title="Checkpoint Up">▲</button>
+<button id="cpdownbtn" onclick="cycleCheckpoint(-1)" title="Checkpoint Down">▼</button>
+
 
 <div class="panel" id="go">
   <h2 id="go-title">⚔ SLAIN ⚔</h2>
@@ -284,11 +287,11 @@ function updateCheckpointUI(){
   // Show actual floor for clarity: tier N = N*1000 floors
   if(upBtn){
     upBtn.style.display = (show && upOwned>0)?'flex':'none';
-    upBtn.textContent = (upOwned>0) ? ('▶ ' + (cpSelUp*1000) + ' ('+cpSelUp+'/'+upOwned+')') : '▶';
+        upBtn.textContent = '▲';
   }
   if(dnBtn){
     dnBtn.style.display = (show && dnOwned>0)?'flex':'none';
-    dnBtn.textContent = (dnOwned>0) ? ('◀ ' + (cpSelDown*1000) + ' ('+cpSelDown+'/'+dnOwned+')') : '◀';
+        dnBtn.textContent = '▼';
   }
 }
 function cycleCheckpoint(dir){
@@ -383,12 +386,12 @@ function checkSpikeCollision(s) {
       if (plR > sx - 4 && plL < sx + 4) {
         takeDamage(s, 1, '🩸 SPIKED!');
         // Stronger knockback so the player doesn't sit on the spike and get re-hit.
-        pl.vy = Math.min(pl.vy, -4.2);
+        pl.vy = Math.min(pl.vy, -2.6);
         const dir = (pl.x < sx) ? -1 : 1;
         pl.spikeDir = dir;
-        pl.spikeKnock = 14;
-        pl.vx = dir * Math.max(Math.abs(pl.vx), 3.2);
-        pl.x += dir * 6;
+        pl.spikeKnock = 6;
+        pl.vx = dir * Math.max(Math.abs(pl.vx), 1.4);
+        pl.x += dir * 2;
         return;
       }
     }
@@ -633,8 +636,8 @@ function update(s){
     pl.spikeKnock--;
     const d=pl.spikeDir||1;
     // Ensure some lateral motion even if airbrake is damping
-    pl.vx = d * Math.max(Math.abs(pl.vx), 2.8);
-    pl.x += d * 1.8;
+    pl.vx = d * Math.max(Math.abs(pl.vx), 1.4);
+    pl.x += d * 0.7;
   }
 
   const bounce=bounceVal();
