@@ -297,6 +297,7 @@ function mkS(savedPos){
     worldMode: 'tower',   // 'tower' | 'exiting' | 'outside' | 'entering'
     camExitT: 0,          // tick counter for exit camera lerp
     exitSide: null,       // 'left' | 'right' — which wall the player exited through
+    modeCooldown: 0,      // ticks until next mode transition is allowed (prevents oscillation)
     // PHASE 2: tower references
     activeTower: initTower,
     towers: [initTower],
@@ -659,6 +660,7 @@ function updateBats(s){
 // ── Update ────────────────────────────────────────────────────────────────────
 function update(s){
   s.tick++;
+  if(s.modeCooldown > 0) s.modeCooldown--;
   const pl=s.pl,prevY=pl.y,prevX=pl.x;
   const grav=gravVal(),ab=airbrakeVal();
 
@@ -670,40 +672,40 @@ function update(s){
   if(pl.damageFlash>0) pl.damageFlash--;
 
   // P3: wall collision + exit detection — only applies in tower mode.
-  // In exiting/outside/entering the walls are no longer an obstacle.
+  // modeCooldown prevents oscillation after any mode transition.
   const bounce = bounceVal();
-  if(s.worldMode === 'tower'){
+  if(s.worldMode === 'tower' && s.modeCooldown <= 0){
     const tw = s.activeTower;
     const leftInner  = tw.worldX + tw.wallThickness;
     const rightInner = tw.worldX + tw.width - tw.wallThickness;
 
-    // Left wall — check for exit first, then collision
     if(pl.x - pl.w/2 < leftInner){
       if(isInBreak(tw, 'left', pl.y)){
-        // Player is crossing the inner face through a break — begin exit
-        s.worldMode  = 'exiting';
-        s.exitSide   = 'left';
-        s.camExitT   = 0;
+        s.worldMode = 'exiting'; s.exitSide = 'left'; s.camExitT = 0; s.modeCooldown = 90;
+        // Immediately strip interior platforms — they must not collide while player is outside
+        s.plats = s.plats.filter(p => p.outside);
+        s.coins = s.coins.filter(c => c.outside);
+        s.mushrooms = [];
       } else {
         pl.x  = leftInner + pl.w/2;
         pl.vx = Math.abs(pl.vx) * bounce;
       }
     }
-    // Right wall
     if(pl.x + pl.w/2 > rightInner){
       if(isInBreak(tw, 'right', pl.y)){
-        s.worldMode  = 'exiting';
-        s.exitSide   = 'right';
-        s.camExitT   = 0;
+        s.worldMode = 'exiting'; s.exitSide = 'right'; s.camExitT = 0; s.modeCooldown = 90;
+        s.plats = s.plats.filter(p => p.outside);
+        s.coins = s.coins.filter(c => c.outside);
+        s.mushrooms = [];
       } else {
         pl.x  = rightInner - pl.w/2;
         pl.vx = -Math.abs(pl.vx) * bounce;
       }
     }
   }
-  // (entering mode: re-entry wall clamping handled here)
-  // P4: outside — check collision with all towers and detect entry through breaks
-  if(s.worldMode==='outside'){
+  // P4: outside — check collision with all towers and detect entry through breaks.
+  // modeCooldown prevents re-entry immediately after exiting the same spot.
+  if(s.worldMode==='outside' && s.modeCooldown <= 0){
     for(const tw of s.towers){
       const leftOuter  = tw.worldX;
       const rightOuter = tw.worldX + tw.width;
@@ -713,12 +715,10 @@ function update(s){
       // Left wall (player approaching from outside-left)
       if(pl.x-pl.w/2 < leftInner && pl.x+pl.w/2 > leftOuter && pl.x < leftInner){
         if(isInBreak(tw,'left',pl.y)){
-          // Walking into a break from outside — begin entry transition
-          s.activeTower=tw; s.worldMode='entering'; s.camExitT=0;
-          // Clear outside objects so tower interior generates cleanly
+          s.activeTower=tw; s.worldMode='entering'; s.camExitT=0; s.modeCooldown=90;
           s.plats=s.plats.filter(p=>!p.outside);
           s.coins=s.coins.filter(c=>!c.outside);
-          s.mushrooms=s.mushrooms.filter(m=>!m.outside);
+          s.mushrooms=[];
           break;
         } else {
           pl.x=leftOuter-pl.w/2; pl.vx=-Math.abs(pl.vx)*bounce;
@@ -727,10 +727,10 @@ function update(s){
       // Right wall (player approaching from outside-right)
       if(pl.x+pl.w/2 > rightInner && pl.x-pl.w/2 < rightOuter && pl.x > rightInner){
         if(isInBreak(tw,'right',pl.y)){
-          s.activeTower=tw; s.worldMode='entering'; s.camExitT=0;
+          s.activeTower=tw; s.worldMode='entering'; s.camExitT=0; s.modeCooldown=90;
           s.plats=s.plats.filter(p=>!p.outside);
           s.coins=s.coins.filter(c=>!c.outside);
-          s.mushrooms=s.mushrooms.filter(m=>!m.outside);
+          s.mushrooms=[];
           break;
         } else {
           pl.x=rightOuter+pl.w/2; pl.vx=Math.abs(pl.vx)*bounce;
@@ -827,16 +827,23 @@ function update(s){
   } else if(s.worldMode === 'exiting'){
     s.camExitT++;
     s.cam.x += (pl.x - W/2 - s.cam.x) * 0.12;
-    if(s.camExitT > 40) s.worldMode = 'outside';
+    if(s.camExitT > 40){
+      s.worldMode = 'outside';
+      s.modeCooldown = 90;
+      // Push player fully past the outer wall face so they never re-trigger entry check
+      const tw = s.activeTower;
+      if(s.exitSide === 'left') pl.x = Math.min(pl.x, tw.worldX - pl.w/2 - 2);
+      else                      pl.x = Math.max(pl.x, tw.worldX + tw.width + pl.w/2 + 2);
+    }
   } else if(s.worldMode === 'outside'){
     s.cam.x += (pl.x - W/2 - s.cam.x) * 0.07;
   } else if(s.worldMode === 'entering'){
-    // P4: lerp cam.x back to the tower's locked position
     s.camExitT++;
     s.cam.x += (s.activeTower.worldX - s.cam.x) * 0.12;
     if(s.camExitT > 40){
       s.worldMode='tower';
-      s.cam.x=s.activeTower.worldX; // snap exact at end of lerp
+      s.cam.x=s.activeTower.worldX;
+      s.modeCooldown = 90; // prevent immediate re-exit while player settles inside
     }
   }
 
@@ -1088,7 +1095,7 @@ function drawOneTowerWalls(tw, camX, camY, exterior){
 // P4: Routes to draw all visible towers (exterior) or active tower (interior)
 function drawTowerWalls(){
   const camY = S.cam.y, camX = S.cam.x;
-  const exterior = S.worldMode==='outside';
+  const exterior = S.worldMode==='outside' || S.worldMode==='exiting';
 
   if(exterior){
     // Draw all towers in world that are on screen
@@ -1529,8 +1536,8 @@ function drawOutsideHUD(){
 function frame(){
   if(S.alive&&!paused) update(S);
   drawSky();
-  // P4: castle-wall brick background for all tower-interior states
-  if(S.worldMode==='tower'||S.worldMode==='exiting'||S.worldMode==='entering') drawCastleWall();
+  // P4: castle-wall brick background only while fully inside a tower
+  if(S.worldMode==='tower'||S.worldMode==='entering') drawCastleWall();
   for(const bt of S.bats) drawBat(bt);
   for(const p of S.plats){
     drawPlatform(p);
