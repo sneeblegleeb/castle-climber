@@ -24,6 +24,19 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 #pausebtn { right:10px; }
 #fsbtn { right:54px; font-size:14px; }
 #pausebtn:hover, #fsbtn:hover { border-color:#ffdd00; }
+
+#cpupbtn, #cpdownbtn{
+  position:absolute; top:50%; transform:translateY(-50%);
+  background:rgba(0,0,0,0.55); border:2px solid #888;
+  color:#fff; font-family:monospace; font-size:18px;
+  width:36px; height:52px; cursor:pointer;
+  display:none; align-items:center; justify-content:center;
+  z-index:12;
+}
+#cpdownbtn{ left:6px; }
+#cpupbtn{ right:6px; }
+#cpupbtn:hover, #cpdownbtn:hover{ border-color:#ffdd00; }
+
 .panel {
   position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
   background:rgba(10,8,5,0.96); border:4px solid #aa8833;
@@ -69,6 +82,8 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 </div>
 <button id="fsbtn" onclick="toggleFS()" title="Fullscreen">⛶</button>
 <button id="pausebtn" onclick="togglePause()">⏸</button>
+<button id="cpdownbtn" onclick="cycleCheckpoint(-1)" title="Checkpoint Down">◀</button>
+<button id="cpupbtn" onclick="cycleCheckpoint(1)" title="Checkpoint Up">▶</button>
 
 <div class="panel" id="go">
   <h2 id="go-title">⚔ SLAIN ⚔</h2>
@@ -155,6 +170,11 @@ const UPGRADES=[
   {id:'batradius',name:'WARDING SIGIL',    desc:'Bats cannot agro within a wider radius',   icon:'🔯',base:80,  inc:25,    baseCost:18,  costMult:1.3},
   {id:'heartrate',name:'BLESSED GROUNDS',  desc:'Hearts of healing appear more often',      icon:'💖',base:0.04,inc:0.025, baseCost:24,  costMult:1.4},
   {id:'sporeres', name:'SPORE WARD',       desc:'Thy armor filters the toxic miasma longer',icon:'🍄',base:70,  inc:25,    baseCost:20,  costMult:1.4},
+
+  // ── Checkpoints ──────────────────────────────────────────────────────────
+  // Each rank unlocks one checkpoint tier (1000 floors per tier) in that direction.
+  {id:'cp_up',   name:'CHECKPOINT BANNER (UP)',   desc:'Unlock upward checkpoints (every 1000 floors)',   icon:'▶', base:0, inc:1, baseCost:1000, costMult:1.0},
+  {id:'cp_down', name:'CHECKPOINT BANNER (DOWN)', desc:'Unlock downward checkpoints (every 1000 floors)', icon:'◀', base:0, inc:1, baseCost:1000, costMult:1.0},
 ];
 
 let upgLevels={};
@@ -162,7 +182,12 @@ UPGRADES.forEach(u=>upgLevels[u.id]=0);
 let totalCoins=0,best=0,lowest=0;
 
 function upgVal(id){const u=UPGRADES.find(x=>x.id===id);return u.base+upgLevels[id]*u.inc;}
-function upgCost(id){const u=UPGRADES.find(x=>x.id===id);return Math.ceil(u.baseCost*Math.pow(u.costMult,upgLevels[id]));}
+function upgCost(id){
+  const u=UPGRADES.find(x=>x.id===id);
+  // Checkpoints have linear pricing: 1000, 2000, 3000... per tier
+  if(id==='cp_up'||id==='cp_down') return 1000*(upgLevels[id]+1);
+  return Math.ceil(u.baseCost*Math.pow(u.costMult,upgLevels[id]));
+}
 
 // Sell price = half of what was paid for the most recent rank.
 // Cost paid for rank N was upgCost at level N-1, i.e. baseCost * mult^(N-1).
@@ -173,6 +198,16 @@ function upgSellPrice(id){
   return Math.floor(Math.ceil(u.baseCost*Math.pow(u.costMult,lvl-1))/2);
 }
 
+
+// ── Checkpoint gating ───────────────────────────────────────────────────────
+// To buy checkpoint tier N (rank N), the player must have already reached it.
+// Up direction uses `best` (highest positive floor). Down uses `lowest` (most negative floor).
+function checkpointTierReq(id, tier){
+  const floors = tier*1000;
+  if(id==='cp_up')   return {ok: best   >= floors, need: floors, dir: 'up'};
+  if(id==='cp_down') return {ok: lowest <= -floors, need: floors, dir: 'down'};
+  return {ok:true, need:0, dir:''};
+}
 function maxHP(){return upgVal('maxhp')|0;}
 function maxAirJumps(){return upgVal('airjumps')|0;}
 function frictionVal(){return Math.max(0.05, upgVal('friction'));}
@@ -231,6 +266,51 @@ function confirmWipe(){if(confirm('Wipe all progress? This cannot be undone.')){
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let S,drag=null,floats=[],paused=false,saveTimer=0;
+
+// ── Checkpoints (run-start selection) ──────────────────────────────────────
+let checkpointPhase=true;
+let cpSelUp=1, cpSelDown=1;
+function ownedCPTiers(dir){return dir>0?(upgLevels['cp_up']|0):(upgLevels['cp_down']|0);}
+function updateCheckpointUI(){
+  const upBtn=document.getElementById('cpupbtn');
+  const dnBtn=document.getElementById('cpdownbtn');
+  const upOwned=ownedCPTiers(1);
+  const dnOwned=ownedCPTiers(-1);
+  const show=checkpointPhase && S && S.alive;
+  if(upBtn){ upBtn.style.display = (show && upOwned>0)?'flex':'none'; upBtn.textContent='▶'+(upOwned>0?(' '+cpSelUp+'/'+upOwned):''); }
+  if(dnBtn){ dnBtn.style.display = (show && dnOwned>0)?'flex':'none'; dnBtn.textContent='◀'+(dnOwned>0?(' '+cpSelDown+'/'+dnOwned):''); }
+}
+function cycleCheckpoint(dir){
+  if(!checkpointPhase||!S||!S.alive) return;
+  const max=ownedCPTiers(dir);
+  if(max<=0) return;
+  if(dir>0){ cpSelUp = (cpSelUp%max)+1; teleportToCheckpoint(dir, cpSelUp); }
+  else { cpSelDown = (cpSelDown%max)+1; teleportToCheckpoint(dir, cpSelDown); }
+  updateCheckpointUI();
+}
+function teleportToCheckpoint(dir, tier){
+  // tier is in 1000-floor increments.
+  const targetScore = dir * tier * 1000; // floors
+  const targetY = -targetScore * 10;     // world y (score = floor(-y/10))
+  const px = W/2;
+  const platY = targetY + 12;
+  const id = platId(platY);
+  // Ensure a checkpoint platform exists
+  let p = S.plats.find(pp=>pp.id===id);
+  if(!p){
+    p={x:px-55,y:platY,w:110,h:14,icy:false,torch:false,id};
+    S.plats.push(p);
+  }
+  p.checkpoint=true;
+  // Move player
+  S.pl.x=px; S.pl.y=targetY-20; S.pl.vx=0; S.pl.vy=0;
+  S.pl.onG=false; S.pl.coyote=0; S.pl.fallVy=0;
+  // Recenter camera and (re)generate nearby content
+  S.cam = S.pl.y - H*0.38;
+  gen(S); cull(S); gen(S); cull(S);
+  floats=[]; drag=null;
+}
+
 
 function hashY(y){let h=Math.sin(y*127.1+311.7)*43758.5453;return h-Math.floor(h);}
 function hash2(a,b){let h=Math.sin(a*127.1+b*311.7+92.3)*43758.5453;return h-Math.floor(h);}
@@ -658,6 +738,7 @@ function up(){
   const d=Math.min(dist,130),a=Math.atan2(dy,dx),pw=d/130;
   S.pl.vx=-Math.cos(a)*pw*upgVal('power');
   S.pl.vy=-Math.sin(a)*pw*upgVal('power');
+  if(checkpointPhase){ checkpointPhase=false; updateCheckpointUI(); }
   if(!S.pl.onG&&S.pl.coyote<=0) S.pl.airJumpsLeft=Math.max(0,S.pl.airJumpsLeft-1);
   S.pl.onG=false;drag=null;
 }
@@ -834,6 +915,16 @@ function drawPlatform(p){
     for(let i=20;i<p.w;i+=20) ctx.fillRect((p.x+i)|0,sy,2,p.h);
     ctx.fillStyle='rgba(0,0,0,0.25)';ctx.fillRect((p.x+2)|0,(sy+p.h)|0,p.w|0,4);
     if(p.torch) drawTorch(p.x+p.w/2,sy-2);
+    if(p.checkpoint){
+      // checkpoint banner
+      const bx=(p.x+p.w/2)|0;
+      ctx.fillStyle='#332211';ctx.fillRect(bx-1,sy-34,2,34);
+      ctx.fillStyle='#ffdd00';ctx.fillRect(bx,sy-34,1,34);
+      ctx.fillStyle='#882222';ctx.fillRect(bx+1,sy-32,14,10);
+      ctx.fillStyle='#cc4444';ctx.fillRect(bx+2,sy-31,12,8);
+      ctx.fillStyle='#ffdd00';ctx.fillRect(bx+4,sy-29,2,2);
+    }
+
   }
 }
 
@@ -1233,12 +1324,13 @@ function renderShop(which){
   UPGRADES.forEach(u=>{
     const cost=upgCost(u.id),lvl=upgLevels[u.id];
     const capped=u.maxLvl!=null&&lvl>=u.maxLvl;
-    const canBuy=!capped&&totalCoins>=cost;
+    const req=checkpointTierReq(u.id, lvl+1);
+    const canBuy=!capped&&totalCoins>=cost&&req.ok;
     const sellPrice=upgSellPrice(u.id);
     const canSell=lvl>0;
 
     const div=document.createElement('div');div.className='upg';
-    const buyLabel=capped?'MAX':canBuy?'⚜ '+cost:'🔒 '+cost;
+    const buyLabel=capped?'MAX':(req&&req.ok? (totalCoins>=cost?'⚜ '+cost:'🔒 '+cost) : '⛔ '+(req.need||cost));
     const rankLabel=capped
       ?`RANK ${lvl} <span style="color:#ffaa44">(MAX)</span>`
       :`RANK ${lvl}${u.maxLvl!=null?' / '+u.maxLvl:''}`;
@@ -1262,7 +1354,10 @@ function renderShop(which){
 function buyUpg(id,which){
   const u=UPGRADES.find(x=>x.id===id);
   if(u.maxLvl!=null&&upgLevels[id]>=u.maxLvl) return;
-  const cost=upgCost(id);if(totalCoins<cost)return;
+  const cost=upgCost(id);
+  const req=checkpointTierReq(id, upgLevels[id]+1);
+  if(!req.ok) return;
+  if(totalCoins<cost) return;
   totalCoins-=cost;upgLevels[id]++;
   if(id==='maxhp'&&S&&S.alive){S.pl.maxHp=maxHP();S.pl.hp=Math.min(S.pl.hp+1,S.pl.maxHp);updateHeartsUI(S.pl);}
   if(id==='airjumps'&&S&&S.alive) S.pl.airJumpsLeft=Math.min(S.pl.airJumpsLeft+1,maxAirJumps());
@@ -1305,6 +1400,7 @@ function restart(){
   floats=[];drag=null;paused=false;saveTimer=0;
   timeScale=1.0;timeSlowTimer=0;
   S=mkS(null);
+  checkpointPhase=true; cpSelUp=1; cpSelDown=1; updateCheckpointUI();
   document.getElementById('go').style.display='none';
   document.getElementById('pausemenu').style.display='none';
   document.getElementById('pausebtn').style.display='flex';
@@ -1327,6 +1423,7 @@ function restart(){
   document.getElementById('coindisp').textContent='⚜ '+totalCoins;
   document.getElementById('best').textContent='BEST: '+best+' / '+lowest;
   S=mkS(save&&save.pos?save.pos:null);
+  updateCheckpointUI();
   updateHeartsUI(S.pl);
   frame();
 })();
