@@ -148,20 +148,22 @@ function maxHP(){return upgVal('maxhp')|0;}
 function maxAirJumps(){return upgVal('airjumps')|0;}
 function frictionVal(){return Math.max(0.05, upgVal('friction'));}
 function airbrakeVal(){return Math.max(0.05, upgVal('airbrake'));}
+// Bounce clamped at 0.92 — values >= 1.0 would accelerate the player off walls
+// instead of dampening, breaking physics entirely at level 6+.
 function bounceVal(){return Math.min(0.92, upgVal('bounce'));}
+// FIX 1: Gravity clamped to a minimum so it can never invert and send the player flying upward.
 function gravVal(){return Math.max(0.04, upgVal('gravity'));}
+// Scales bat speed and aggro with depth — bats get meaningfully harder past floor 1000
+// so high-level builds still require skill rather than just stat-checking encounters.
 function batDifficultyScale(score){return 1 + Math.min(2.5, Math.abs(score) / 4000);}
 function batAgroRadius(){return Math.min(upgVal('batradius'), H*0.45);}
 function heartSpawnRate(){return upgVal('heartrate');}
 function sporeToleranceVal(){return upgVal('sporeres');}
 
+// Mushroom spawn density scales with depth, starting mild and peaking around floor 4500.
 const MUSH_START = 150;
 const MUSH_FULL  = 4500;
 const MUSH_MAX_DENSITY = 0.38;
-
-// ── P4: Outside chunk constants ───────────────────────────────────────────────
-const CHUNK_W = 600;   // world units per chunk horizontally
-const CHUNK_H = 500;   // world units per chunk vertically
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 function saveGame(s){
@@ -185,49 +187,6 @@ let S,drag=null,floats=[],paused=false,saveTimer=0;
 
 function hashY(y){let h=Math.sin(y*127.1+311.7)*43758.5453;return h-Math.floor(h);}
 function hash2(a,b){let h=Math.sin(a*127.1+b*311.7+92.3)*43758.5453;return h-Math.floor(h);}
-
-// ── PHASE 2: Tower as a world object ─────────────────────────────────────────
-// Creates a tower data object. worldX is its left edge in world coords,
-// width is its total width, entryY is the world-Y where it was entered,
-// id is used for deterministic generation.
-function mkTower(worldX, width, entryY, id) {
-  const t = {
-    id,
-    worldX,
-    width,
-    wallThickness: WALL,
-    entryY,
-    breaks: [],
-  };
-  genTowerBreaks(t);
-  return t;
-}
-
-// Deterministically generate wall breaks for a tower.
-// The player moves upward (y decreases), so breaks are placed at
-// yTop/yBottom < entryY (higher up the tower).
-function genTowerBreaks(tower) {
-  const breakCount = 1 + Math.floor(hash2(tower.id * 13 + 7, 200) * 3); // 1–3 breaks
-  for (let i = 0; i < breakCount; i++) {
-    const side  = hash2(tower.id * 17 + i, 201) < 0.5 ? 'left' : 'right';
-    const yOff  = 300 + hash2(tower.id * 17 + i, 202) * 2000; // 300–2300 units above entry
-    const gapH  = 80  + hash2(tower.id * 17 + i, 203) * 60;   // 80–140 px gap
-    tower.breaks.push({
-      side,
-      yTop:    tower.entryY - yOff - gapH,  // more negative = higher up
-      yBottom: tower.entryY - yOff,
-    });
-  }
-}
-
-// Returns true if worldY (player centre) is inside a break on the given side.
-// Gap is large enough (≥80px) that checking centre is fine.
-function isInBreak(tower, side, worldY) {
-  for (const brk of tower.breaks) {
-    if (brk.side === side && worldY > brk.yTop && worldY < brk.yBottom) return true;
-  }
-  return false;
-}
 
 // ── Spike helpers ─────────────────────────────────────────────────────────────
 const SPIKE_START = 300;
@@ -281,30 +240,14 @@ function mkS(savedPos){
   const hp=maxHP();
   const sx=savedPos?savedPos.x:W/2,sy=savedPos?savedPos.y:0;
   const shp=savedPos?Math.min(savedPos.hp,hp):hp;
-
-  // PHASE 2: create the initial tower. worldX=0, width=W so it fills the
-  // full screen — identical to previous behaviour while providing the structure.
-  const initTower = mkTower(0, W, 0, 0);
-
   const s={
     pl:{x:sx,y:sy,vx:0,vy:0,w:18,h:24,onG:false,coyote:0,
         hp:shp,maxHp:hp,hurtTimer:0,fallVy:0,damageFlash:0,
-        airJumpsLeft:maxAirJumps(),sporeExposure:0,
-        lastGroundY:sy},                // P3: for outside-fall kill threshold
-    // PHASE 1: cam is now a {x, y} object. cam.x is locked to 0 in tower mode.
-    cam:{ x: 0, y: sy - H * 0.38 },
-    // P3: mode state machine
-    worldMode: 'tower',   // 'tower' | 'exiting' | 'outside' | 'entering'
-    camExitT: 0,          // tick counter for exit camera lerp
-    exitSide: null,       // 'left' | 'right' — which wall the player exited through
-    modeCooldown: 0,      // ticks until next mode transition is allowed (prevents oscillation)
-    // PHASE 2: tower references
-    activeTower: initTower,
-    towers: [initTower],
+        airJumpsLeft:maxAirJumps(),sporeExposure:0},
+    cam:sy-H*.38,
     plats:[],coins:[],mushrooms:[],
     collectedCoins:new Set(),
     collectedHearts:new Set(),
-    generatedChunks:new Set(),   // P4: tracks which outside chunks have been populated
     score:Math.floor(-sy/10),session_coins:0,
     alive:true,tick:0,
     bats:[],
@@ -316,123 +259,43 @@ function mkS(savedPos){
   return s;
 }
 
-// P5: homeX gives each bat a world-X anchor for idle drift bounds
-function mkBat(wy, plY, homeX){
+function mkBat(wy,plY){
   const minDist=batAgroRadius()+50;
   if(plY!==undefined&&Math.abs(wy-plY)<minDist){
     wy = wy<plY ? plY-minDist : plY+minDist;
   }
-  const bx = homeX !== undefined ? homeX
-    : WALL + 10 + Math.random()*(W - WALL*2 - 20);
-  return{x:bx, homeX:bx, wy, vx:(Math.random()-.5)*1.0,
-    flap:Math.random()*Math.PI*2, state:'idle', agroTimer:0, retreatTimer:0,
-    tx:0, ty:0, dvx:0, dvy:0, hurtTimer:0};
+  return{x:WALL+10+Math.random()*(W-WALL*2-20),wy,vx:(Math.random()-.5)*1.0,
+    flap:Math.random()*Math.PI*2,state:'idle',agroTimer:0,retreatTimer:0,
+    tx:0,ty:0,dvx:0,dvy:0,hurtTimer:0};
 }
 
+// FIX 4: Removed `|| 0` fallback — platforms near y=0 were all colliding on id=0,
+// causing spawn-area platforms to silently vanish.
 function platId(wy){return Math.round(wy/10);}
 
-// ── Generation routing ────────────────────────────────────────────────────────
 function gen(s){
-  if(s.worldMode==='tower'||s.worldMode==='entering'){
-    genTowerContent(s);
-  } else {
-    genOutside(s);
-  }
-  // Bats always maintained regardless of mode
-  const idle=s.bats.filter(bt=>bt.state==='idle').length;
-  let add=8-idle;
-  while(add-->0){
-    const batY=s.cam.y+(Math.random()-.5)*H*2;
-    let batHomeX;
-    if(s.worldMode==='tower'||s.worldMode==='entering'){
-      const tw=s.activeTower;
-      batHomeX=tw.worldX+tw.wallThickness+10+Math.random()*(tw.width-tw.wallThickness*2-20);
-    } else {
-      batHomeX=s.cam.x+W*0.1+Math.random()*W*0.8;
-    }
-    s.bats.push(mkBat(batY,s.pl.y,batHomeX));
-  }
-}
-
-// Tower interior: vertical band-based generation (original logic)
-function genTowerContent(s){
   const margin=H*0.75;
-  const top=s.cam.y-margin, bot=s.cam.y+H+margin;
+  const top=s.cam-margin, bot=s.cam+H+margin;
 
   let mn=Infinity,mx=-Infinity;
-  for(const p of s.plats){if(!p.outside&&p.y<mn)mn=p.y;if(!p.outside&&p.y>mx)mx=p.y;}
-  if(mn===Infinity){mn=s.pl.y;mx=s.pl.y;}
+  for(const p of s.plats){if(p.y<mn)mn=p.y;if(p.y>mx)mx=p.y;}
+  if(!s.plats.length){mn=s.pl.y;mx=s.pl.y;}
   let y=mx; while(y<bot){y+=65+Math.random()*85;if(y<bot)addP(s,y);}
   y=mn;     while(y>top){y-=65+Math.random()*85;if(y>top)addP(s,y);}
 
+  // FIX 5: Coins and hearts use a tighter generation margin than the cull margin.
+  // This prevents the churn where items near the cull boundary are repeatedly
+  // created and immediately destroyed as the player oscillates in one area.
   const coinMargin=H*0.55;
-  const ctop=s.cam.y-coinMargin, cbot=s.cam.y+H+coinMargin;
+  const ctop=s.cam-coinMargin, cbot=s.cam+H+coinMargin;
   const COIN_BAND=80, HEART_BAND=320;
   const cb0=Math.floor(ctop/COIN_BAND), cb1=Math.ceil(cbot/COIN_BAND);
   for(let b=cb0;b<=cb1;b++) tryPlaceCoin(s,b*COIN_BAND,b);
   const hb0=Math.floor(ctop/HEART_BAND), hb1=Math.ceil(cbot/HEART_BAND);
   for(let b=hb0;b<=hb1;b++) tryPlaceHeart(s,b*HEART_BAND,b);
-}
 
-// Outside: 2-D chunk-based generation
-function genOutside(s){
-  const cx0=Math.floor((s.cam.x-W*0.5)/CHUNK_W);
-  const cx1=Math.ceil( (s.cam.x+W*1.5)/CHUNK_W);
-  const cy0=Math.floor((s.cam.y-H*0.5)/CHUNK_H);
-  const cy1=Math.ceil( (s.cam.y+H*1.5)/CHUNK_H);
-  for(let cy=cy0;cy<=cy1;cy++)
-    for(let cx=cx0;cx<=cx1;cx++)
-      genChunk(s,cx,cy);
-}
-
-function genChunk(s,cx,cy){
-  const key=cx+','+cy;
-  if(s.generatedChunks.has(key)) return;
-  s.generatedChunks.add(key);
-
-  const x0=cx*CHUNK_W, y0=cy*CHUNK_H;
-
-  // 3–5 floating platforms per chunk
-  const platCount=3+Math.floor(hash2(cx*37+cy,110)*3);
-  for(let i=0;i<platCount;i++){
-    const pw=55+hash2(cx*17+cy*31+i,111)*80;
-    const wx=x0+20+hash2(cx*17+cy*31+i,112)*(CHUNK_W-pw-40);
-    const wy=y0+60+hash2(cx*17+cy*31+i,113)*(CHUNK_H-120);
-    // Use a large ID that won't collide with tower platIds (which are ~wy/10)
-    const pid=(cx+500)*100000+(cy+500)*1000+i;
-    if(s.plats.some(p=>p.id===pid)) continue;
-    const icy=hash2(cx*17+cy*31+i,114)<0.14;
-    const torch=!icy&&hash2(cx*17+cy*31+i,115)<0.22;
-    s.plats.push({x:wx,y:wy,w:pw,h:14,icy,torch,id:pid,outside:true});
-    tryPlaceMushroom(s,{x:wx,y:wy,w:pw,id:pid});
-
-    // Drop a coin above this platform ~60% of the time
-    if(hash2(cx*17+cy*31+i,116)<0.6){
-      const band=pid; // reuse pid as band key — unique
-      if(!s.collectedCoins.has(band)&&!s.coins.some(c=>c.id===band)){
-        const val=upgVal('coinval')|0;
-        s.coins.push({x:wx+pw*0.3+hash2(pid,117)*pw*0.4,
-          y:wy-28-hash2(pid,118)*20,
-          collected:false,bob:hash2(pid,119)*Math.PI*2,
-          id:band,outside:true});
-      }
-    }
-  }
-
-  // P4: ~18% chance of a tower entrance per chunk
-  // Only spawn to the right of the initial tower to give the player direction
-  if(hash2(cx*53+cy,130)<0.18){
-    const tid=(cx+500)*997+(cy+500)*1009; // deterministic, non-zero
-    if(!s.towers.some(t=>t.id===tid)){
-      // Place tower so its left wall is at the right edge of this chunk
-      const tWorldX=x0+CHUNK_W*0.4+hash2(cx*53+cy,131)*CHUNK_W*0.2;
-      const tWidth=280+hash2(cx*53+cy,132)*100;
-      // Entry Y = roughly mid-chunk height so breaks appear in a reachable area
-      const tEntryY=y0+CHUNK_H*0.5+hash2(cx*53+cy,133)*100;
-      const tw=mkTower(tWorldX,tWidth,tEntryY,tid);
-      s.towers.push(tw);
-    }
-  }
+  const idle=s.bats.filter(bt=>bt.state==='idle').length;
+  let add=8-idle; while(add-->0) s.bats.push(mkBat(s.cam+(Math.random()-.5)*H*2,s.pl.y));
 }
 
 function platOverlap(s,wx,wy,r){
@@ -446,9 +309,7 @@ function tryPlaceCoin(s,wy,band){
   if(hash2(band,42)>spawnChance) return;
   if(s.collectedCoins.has(band)) return;
   if(s.coins.some(c=>c.id===band)) return;
-  // PHASE 2: use tower bounds for x placement
-  const t = s.activeTower;
-  const wx = t.worldX + t.wallThickness + 14 + hash2(band,40) * (t.width - t.wallThickness*2 - 28);
+  const wx=WALL+14+hash2(band,40)*(W-WALL*2-28);
   let cy=wy+hash2(band,43)*30-15;
   for(let i=0;i<8;i++){if(!platOverlap(s,wx,cy,9))break;cy-=12;}
   s.coins.push({x:wx,y:cy,collected:false,bob:hash2(band,41)*Math.PI*2,id:band});
@@ -459,9 +320,7 @@ function tryPlaceHeart(s,wy,band){
   if(s.collectedHearts.has(hid)) return;
   if(s.hearts.some(h=>h.id===hid)) return;
   if(hash2(band,50)>heartSpawnRate()) return;
-  // PHASE 2: use tower bounds for x placement
-  const t = s.activeTower;
-  const wx = t.worldX + t.wallThickness + 18 + hash2(band,51) * (t.width - t.wallThickness*2 - 36);
+  const wx=WALL+18+hash2(band,51)*(W-WALL*2-36);
   let cy=wy+hash2(band,53)*40-20;
   for(let i=0;i<8;i++){if(!platOverlap(s,wx,cy,11))break;cy-=14;}
   s.hearts.push({x:wx,y:cy,collected:false,bob:hash2(band,52)*Math.PI*2,id:hid});
@@ -473,13 +332,15 @@ function tryPlaceMushroom(s, p){
   if(s.mushrooms.some(m=>m.platId===p.id)) return;
   const density = Math.min(1, (absScore - MUSH_START) / (MUSH_FULL - MUSH_START));
   if(hash2(p.id*53+7, 99) > density * MUSH_MAX_DENSITY) return;
+  // Position deterministically along the platform, away from edges
   const mx = p.x + 10 + hash2(p.id, 88) * (p.w - 20);
+  // Stagger initial puff timers so mushrooms don't all puff at once on entry
   const initDelay = 80 + hash2(p.id, 91) * 220;
   s.mushrooms.push({
-    x:mx, y:p.y,
+    x:mx, y:p.y,       // y = platform top world-Y
     platId:p.id,
     puffTimer:initDelay,
-    cloud:null,
+    cloud:null,        // null or {timer, maxTimer} when active
     bob:hash2(p.id,92)*Math.PI*2,
   });
 }
@@ -487,12 +348,9 @@ function tryPlaceMushroom(s, p){
 function addP(s,wy){
   const id=platId(wy);
   if(s.plats.some(p=>p.id===id)) return;
-  // PHASE 2: use tower bounds for platform placement
-  const t = s.activeTower;
-  const avail = t.width - t.wallThickness * 2;
+  const avail=W-WALL*2;
   const rng1=hash2(id,1),rng2=hash2(id,2),rng3=hash2(id,3),rng4=hash2(id,4);
-  const w=52+rng1*84;
-  const x = t.worldX + t.wallThickness + 6 + rng2 * (avail - w - 12);
+  const w=52+rng1*84, x=WALL+6+rng2*(avail-w-12);
   const icy=rng3<0.18, torch=!icy&&rng4<0.3;
   const p={x,y:wy,w,h:14,icy,torch,id};
   s.plats.push(p);
@@ -500,49 +358,16 @@ function addP(s,wy){
 }
 
 function cull(s){
-  const margin=H*0.85;
-  const t=s.cam.y-margin, b=s.cam.y+H+margin;
-  const outside=s.worldMode==='outside'||s.worldMode==='exiting';
-  const xM=W*1.8, xl=s.cam.x-xM, xr=s.cam.x+W+xM;
-
-  // When in tower mode, skip platforms flagged as outside (they could cause ghost collisions)
-  const inTowerMode=s.worldMode==='tower'||s.worldMode==='entering';
-  s.plats=s.plats.filter(p=>{
-    if(inTowerMode&&p.outside) return false;
-    if(p.y<=t||p.y>=b) return false;
-    if(outside&&(p.x+p.w<xl||p.x>xr)) return false;
-    return true;
-  });
-  s.coins=s.coins.filter(c=>{
-    if(c.collected) return false;
-    if(c.y<=t||c.y>=b) return false;
-    if(outside&&(c.x<xl||c.x>xr)) return false;
-    return true;
-  });
-  s.hearts=s.hearts.filter(h=>{
-    if(h.collected) return false;
-    if(h.y<=t||h.y>=b) return false;
-    if(outside&&(h.x<xl||h.x>xr)) return false;
-    return true;
-  });
-  // Bats: Y + optional X cull
-  const xMargin=W*2;
-  s.bats=s.bats.filter(bt=>{
-    if(bt.wy<=t-H*1.5||bt.wy>=b+H*1.5) return false;
-    if(outside){const bsx=bt.x-s.cam.x;if(bsx<-xMargin||bsx>W+xMargin) return false;}
-    return true;
-  });
-  s.mushrooms=s.mushrooms.filter(m=>{
-    if(inTowerMode&&m.outside) return false;
-    return m.y>t&&m.y<b;
-  });
-  // P4: cull towers that are very far from the camera
-  const towerXMargin=W*4;
-  s.towers=s.towers.filter(tw=>{
-    if(tw===s.activeTower) return true; // always keep active tower
-    const tsx=tw.worldX-s.cam.x;
-    return tsx>-towerXMargin&&tsx<W+towerXMargin;
-  });
+  const margin=H*0.75;
+  const t=s.cam-margin, b=s.cam+H+margin;
+  s.plats=s.plats.filter(p=>p.y>t&&p.y<b);
+  s.coins=s.coins.filter(c=>!c.collected&&c.y>t&&c.y<b);
+  s.hearts=s.hearts.filter(h=>!h.collected&&h.y>t&&h.y<b);
+  // FIX 2: All bats (regardless of state) are culled when far offscreen.
+  // Previously only idle bats were culled, letting agro/diving/retreating bats
+  // accumulate forever and degrade performance over long runs.
+  s.bats=s.bats.filter(bt=>bt.wy>t-H*1.5&&bt.wy<b+H*1.5);
+  s.mushrooms=s.mushrooms.filter(m=>m.y>t&&m.y<b);
 }
 
 function addFloat(x,sy,text,color){floats.push({x,y:sy,vy:-1.4,life:55,text,color:color||'#ffdd00'});}
@@ -551,10 +376,10 @@ const FALL_THRESH=22;
 const FALL_SEVERE=34;
 
 // ── Mushrooms ─────────────────────────────────────────────────────────────────
-const CLOUD_RADIUS   = 30;
-const CLOUD_DURATION = 160;
-const PUFF_MIN       = 200;
-const PUFF_RANGE     = 220;
+const CLOUD_RADIUS   = 30;   // px — area of spore cloud
+const CLOUD_DURATION = 160;  // ticks cloud stays active
+const PUFF_MIN       = 200;  // ticks minimum between puffs
+const PUFF_RANGE     = 220;  // random range added on top
 
 function updateMushrooms(s){
   const pl = s.pl;
@@ -574,6 +399,7 @@ function updateMushrooms(s){
       }
     }
 
+    // Check if player is inside this cloud
     if(m.cloud){
       const dx = pl.x - m.x, dy = pl.y - m.y;
       if(Math.sqrt(dx*dx + dy*dy) < CLOUD_RADIUS + 8) inCloud = true;
@@ -587,6 +413,7 @@ function updateMushrooms(s){
       pl.sporeExposure = 0;
     }
   } else {
+    // Drain exposure quickly once out of the cloud
     pl.sporeExposure = Math.max(0, pl.sporeExposure - 3);
   }
 }
@@ -599,30 +426,15 @@ function updateBats(s){
   const scale=batDifficultyScale(s.score);
   const diveSpeed=BAT_DIVE_SPEED*scale;
   const agroRate=Math.min(0.18, BAT_AGRO_RATE*scale);
-
-  // P5: helper — horizontal bounds depend on mode
-  const inTower = s.worldMode==='tower' || s.worldMode==='exiting';
-  function batBounceX(bt, range){
-    if(inTower){
-      const tw=s.activeTower;
-      const lb=tw.worldX+tw.wallThickness+8;
-      const rb=tw.worldX+tw.width-tw.wallThickness-8;
-      if(bt.x<lb||bt.x>rb) bt.vx*=-1;
-    } else {
-      // P5: soft home boundary — reflect when too far from spawn X
-      if(Math.abs(bt.x - bt.homeX) > range) bt.vx*=-1;
-    }
-  }
-
   for(const bt of s.bats){
     bt.flap+=0.14;
     if(bt.hurtTimer>0) bt.hurtTimer--;
     if(bt.state==='idle'){
       bt.x+=bt.vx;
       bt.wy+=Math.sin(bt.flap*0.25)*0.3;
-      batBounceX(bt, 150);
+      if(bt.x<WALL+8||bt.x>W-WALL-8) bt.vx*=-1;
       bt.vx=Math.max(-BAT_IDLE_SPEED,Math.min(BAT_IDLE_SPEED,bt.vx));
-      const bsy=bt.wy-s.cam.y;
+      const bsy=bt.wy-s.cam;
       const distToPlayer=Math.sqrt((bt.x-pl.x)**2+(bt.wy-pl.y)**2);
       if(bsy>-50&&bsy<H+50&&!paused&&distToPlayer>batAgroRadius()&&s.tick%BAT_AGRO_PERIOD===0&&Math.random()<agroRate){
         bt.state='agro';bt.agroTimer=90+Math.random()*60;
@@ -630,7 +442,7 @@ function updateBats(s){
     } else if(bt.state==='agro'){
       bt.flap+=0.06;bt.x+=bt.vx*1.2;
       bt.wy+=(pl.y-bt.wy)*0.008;
-      batBounceX(bt, 200);  // P5: slightly wider range when agro
+      if(bt.x<WALL+8||bt.x>W-WALL-8) bt.vx*=-1;
       if(--bt.agroTimer<=0){
         bt.state='diving';
         const dx=pl.x-bt.x,dy=pl.y-bt.wy,d=Math.sqrt(dx*dx+dy*dy)||1;
@@ -643,15 +455,12 @@ function updateBats(s){
         takeDamage(s,1,'🦇 HIT!');
         bt.state='retreating';bt.retreatTimer=100;bt.dvx*=-0.7;bt.dvy=-3;bt.hurtTimer=45;
       }
-      // P5: camera-relative out-of-bounds check (works for both tower and outside)
-      const bsx=bt.x-s.cam.x, bsy=bt.wy-s.cam.y;
-      if(bsy<-H||bsy>H*2||bsx<-W*0.6||bsx>W*1.6){
+      const bsy=bt.wy-s.cam;
+      if(bsy<-H||bsy>H*2||bt.x<WALL||bt.x>W-WALL){
         bt.state='retreating';bt.retreatTimer=80;bt.dvx*=-0.5;bt.dvy=-2;
       }
     } else if(bt.state==='retreating'){
       bt.x+=bt.dvx*0.88;bt.wy+=bt.dvy;bt.dvx*=0.9;bt.dvy*=0.88;
-      // P5: gently steer retreating bats back toward their home X when outside
-      if(!inTower) bt.dvx += (bt.homeX - bt.x) * 0.008;
       if(--bt.retreatTimer<=0){bt.state='idle';bt.vx=(Math.random()-.5)*BAT_IDLE_SPEED*2;}
     }
   }
@@ -660,8 +469,9 @@ function updateBats(s){
 // ── Update ────────────────────────────────────────────────────────────────────
 function update(s){
   s.tick++;
-  if(s.modeCooldown > 0) s.modeCooldown--;
   const pl=s.pl,prevY=pl.y,prevX=pl.x;
+  // FIX 1: Use gravVal() instead of raw upgVal('gravity') to prevent gravity
+  // from inverting at high upgrade levels and launching the player upward forever.
   const grav=gravVal(),ab=airbrakeVal();
 
   if(pl.vy>0) pl.fallVy=Math.max(pl.fallVy,pl.vy);
@@ -671,79 +481,11 @@ function update(s){
   if(pl.hurtTimer>0) pl.hurtTimer--;
   if(pl.damageFlash>0) pl.damageFlash--;
 
-  // P3: wall collision + exit detection — only applies in tower mode.
-  // modeCooldown prevents oscillation after any mode transition.
-  const bounce = bounceVal();
-  if(s.worldMode === 'tower' && s.modeCooldown <= 0){
-    const tw = s.activeTower;
-    const leftInner  = tw.worldX + tw.wallThickness;
-    const rightInner = tw.worldX + tw.width - tw.wallThickness;
+  const bounce=bounceVal();
+  if(pl.x-pl.w/2<WALL){pl.x=WALL+pl.w/2;pl.vx=Math.abs(pl.vx)*bounce;}
+  if(pl.x+pl.w/2>W-WALL){pl.x=W-WALL-pl.w/2;pl.vx=-Math.abs(pl.vx)*bounce;}
 
-    if(pl.x - pl.w/2 < leftInner){
-      if(isInBreak(tw, 'left', pl.y)){
-        s.worldMode = 'exiting'; s.exitSide = 'left'; s.camExitT = 0; s.modeCooldown = 90;
-        // Immediately strip interior platforms — they must not collide while player is outside
-        s.plats = s.plats.filter(p => p.outside);
-        s.coins = s.coins.filter(c => c.outside);
-        s.mushrooms = [];
-      } else {
-        pl.x  = leftInner + pl.w/2;
-        pl.vx = Math.abs(pl.vx) * bounce;
-      }
-    }
-    if(pl.x + pl.w/2 > rightInner){
-      if(isInBreak(tw, 'right', pl.y)){
-        s.worldMode = 'exiting'; s.exitSide = 'right'; s.camExitT = 0; s.modeCooldown = 90;
-        s.plats = s.plats.filter(p => p.outside);
-        s.coins = s.coins.filter(c => c.outside);
-        s.mushrooms = [];
-      } else {
-        pl.x  = rightInner - pl.w/2;
-        pl.vx = -Math.abs(pl.vx) * bounce;
-      }
-    }
-  }
-  // P4: outside — check collision with all towers and detect entry through breaks.
-  // modeCooldown prevents re-entry immediately after exiting the same spot.
-  if(s.worldMode==='outside' && s.modeCooldown <= 0){
-    for(const tw of s.towers){
-      const leftOuter  = tw.worldX;
-      const rightOuter = tw.worldX + tw.width;
-      const leftInner  = tw.worldX + tw.wallThickness;
-      const rightInner = tw.worldX + tw.width - tw.wallThickness;
-
-      // Left wall (player approaching from outside-left)
-      if(pl.x-pl.w/2 < leftInner && pl.x+pl.w/2 > leftOuter && pl.x < leftInner){
-        if(isInBreak(tw,'left',pl.y)){
-          s.activeTower=tw; s.worldMode='entering'; s.camExitT=0; s.modeCooldown=90;
-          s.plats=s.plats.filter(p=>!p.outside);
-          s.coins=s.coins.filter(c=>!c.outside);
-          s.mushrooms=[];
-          break;
-        } else {
-          pl.x=leftOuter-pl.w/2; pl.vx=-Math.abs(pl.vx)*bounce;
-        }
-      }
-      // Right wall (player approaching from outside-right)
-      if(pl.x+pl.w/2 > rightInner && pl.x-pl.w/2 < rightOuter && pl.x > rightInner){
-        if(isInBreak(tw,'right',pl.y)){
-          s.activeTower=tw; s.worldMode='entering'; s.camExitT=0; s.modeCooldown=90;
-          s.plats=s.plats.filter(p=>!p.outside);
-          s.coins=s.coins.filter(c=>!c.outside);
-          s.mushrooms=[];
-          break;
-        } else {
-          pl.x=rightOuter+pl.w/2; pl.vx=Math.abs(pl.vx)*bounce;
-        }
-      }
-    }
-  }
-
-  if(pl.onG){
-    pl.coyote=upgVal('coyote')|0;
-    pl.airJumpsLeft=maxAirJumps();
-    pl.lastGroundY=pl.y;    // P3: keep track for outside-fall kill
-  }
+  if(pl.onG){pl.coyote=upgVal('coyote')|0;pl.airJumpsLeft=maxAirJumps();}
   else if(pl.coyote>0) pl.coyote--;
   pl.onG=false;
 
@@ -758,6 +500,11 @@ function update(s){
       if(pl.fallVy>=FALL_THRESH){
         const resist=upgVal('fallres');
         let dmg=pl.fallVy>=FALL_SEVERE?2:1;
+        // FIX 3: The original formula had a cliff at integer resist values where
+        // the fractional part became 0, making takeDamage fire ~100% of the time
+        // even though the floor had already reduced the damage. The new approach
+        // separates deterministic integer reduction from probabilistic fractional
+        // reduction cleanly, so protection scales continuously with no cliffs.
         const reducedDmg=Math.max(0,dmg-Math.floor(resist));
         const extraResist=resist-Math.floor(resist);
         const finalDmg=(reducedDmg>0&&Math.random()<extraResist)?reducedDmg-1:reducedDmg;
@@ -790,7 +537,7 @@ function update(s){
       coin.collected=true;
       s.collectedCoins.add(coin.id);
       s.session_coins+=val;totalCoins+=val;
-      addFloat(coin.x-s.cam.x,coin.y-s.cam.y,val>1?'+'+val+' ⚜':'+⚜','#ffcc44');
+      addFloat(coin.x,coin.y-s.cam,val>1?'+'+val+' ⚜':'+⚜','#ffcc44');
     }
   }
 
@@ -803,50 +550,17 @@ function update(s){
       s.collectedHearts.add(heart.id);
       if(pl.hp<pl.maxHp){
         pl.hp=Math.min(pl.maxHp,pl.hp+1);
-        addFloat(heart.x-s.cam.x,heart.y-s.cam.y,'❤️ +1','#ff88aa');
+        addFloat(heart.x,heart.y-s.cam,'❤️ +1','#ff88aa');
         updateHeartsUI(pl);
       } else {
-        addFloat(heart.x-s.cam.x,heart.y-s.cam.y,'FULL','#ff88aa');
+        addFloat(heart.x,heart.y-s.cam,'FULL','#ff88aa');
       }
     }
   }
 
   updateMushrooms(s);
   updateBats(s);
-
-  // P3: mode-aware camera
-  // cam.y always tracks player vertically
-  s.cam.y += (pl.y - H*.4 - s.cam.y) * .07;
-
-  // cam.x depends on mode:
-  //   tower   → hard-locked to tower's worldX (screen stays stable)
-  //   exiting → fast lerp toward player-centered, then flip to outside
-  //   outside → normal 0.07 lerp, same as Y
-  if(s.worldMode === 'tower'){
-    s.cam.x = s.activeTower.worldX;
-  } else if(s.worldMode === 'exiting'){
-    s.camExitT++;
-    s.cam.x += (pl.x - W/2 - s.cam.x) * 0.12;
-    if(s.camExitT > 40){
-      s.worldMode = 'outside';
-      s.modeCooldown = 90;
-      // Push player fully past the outer wall face so they never re-trigger entry check
-      const tw = s.activeTower;
-      if(s.exitSide === 'left') pl.x = Math.min(pl.x, tw.worldX - pl.w/2 - 2);
-      else                      pl.x = Math.max(pl.x, tw.worldX + tw.width + pl.w/2 + 2);
-    }
-  } else if(s.worldMode === 'outside'){
-    s.cam.x += (pl.x - W/2 - s.cam.x) * 0.07;
-  } else if(s.worldMode === 'entering'){
-    s.camExitT++;
-    s.cam.x += (s.activeTower.worldX - s.cam.x) * 0.12;
-    if(s.camExitT > 40){
-      s.worldMode='tower';
-      s.cam.x=s.activeTower.worldX;
-      s.modeCooldown = 90; // prevent immediate re-exit while player settles inside
-    }
-  }
-
+  s.cam+=(pl.y-H*.4-s.cam)*.07;
   s.score=Math.floor(-pl.y/10);
   if(s.score>best) best=s.score;
   if(s.score<lowest) lowest=s.score;
@@ -855,29 +569,18 @@ function update(s){
 
   if(++saveTimer>300){saveTimer=0;saveGame(s);}
 
-  const outsideTag=(s.worldMode==='outside'||s.worldMode==='exiting'||s.worldMode==='entering')?'⚔ OUTSIDE · ':'';
-  const scoreEl=document.getElementById('score');
-  scoreEl.textContent=outsideTag+'FLOOR: '+s.score;
-  // P7: cyan score text outside, gold inside
-  scoreEl.style.color=(outsideTag)?'#44ddff':'#ffdd00';
-  scoreEl.style.textShadow=(outsideTag)?'0 0 8px rgba(0,180,255,0.6),2px 2px #000':'2px 2px #000';
+  document.getElementById('score').textContent='FLOOR: '+s.score;
   document.getElementById('best').textContent='BEST: '+best+' / '+lowest;
   document.getElementById('coindisp').textContent='⚜ '+totalCoins;
   updateHeartsUI(pl);
-
-  // P3: fall kill — outside uses distance-from-last-ground; tower uses screen-bottom
-  if(s.worldMode==='outside'||s.worldMode==='exiting'||s.worldMode==='entering'){
-    if(pl.y > pl.lastGroundY + 3000){ pl.hp=0; killPlayer(s); }
-  } else {
-    if(pl.y - s.cam.y > H+220){ pl.hp=0; killPlayer(s); }
-  }
+  if(pl.y-s.cam>H+220){pl.hp=0;killPlayer(s);}
 }
 
 function takeDamage(s,dmg,label){
   const pl=s.pl;
   if(pl.hurtTimer>0) return;
   pl.hp=Math.max(0,pl.hp-dmg);pl.hurtTimer=90;pl.damageFlash=20;
-  addFloat(pl.x-s.cam.x,pl.y-s.cam.y-20,label||'-'+dmg+'❤️','#ff4444');
+  addFloat(pl.x,pl.y-s.cam-20,label||'-'+dmg+'❤️','#ff4444');
   updateHeartsUI(pl);
   if(pl.hp<=0) killPlayer(s);
 }
@@ -916,23 +619,18 @@ function up(){
 const BOUNCE_COLORS=[[255,200,80],[80,200,255],[180,80,255],[80,255,120],[255,140,40]];
 
 function simTrajectory(sx,sy,vx0,vy0,totalSteps){
+  // FIX 1: Use gravVal() here too so the preview arc matches actual physics
+  // and doesn't diverge from reality at high Featherfall upgrade levels.
   const grav=gravVal(),ab=airbrakeVal(),bc=bounceVal(),pf=frictionVal();
   const hw=9,hh=12;
   let tx=sx,ty=sy,tvx=vx0,tvy=vy0;
   const segs=[{dots:[],bounced:false,bi:0}];
-
   for(let i=0;i<totalSteps;i++){
     const ptx=tx,pty=ty;
     tvy+=grav;tvx*=ab;tx+=tvx;ty+=tvy;
     let hit=false;
-    // P3: only bounce off tower walls when actually inside a tower
-    if(S.worldMode==='tower'){
-      const tw = S.activeTower;
-      const tLeft  = tw.worldX + tw.wallThickness;
-      const tRight = tw.worldX + tw.width - tw.wallThickness;
-      if(tx-hw<=tLeft){tx=tLeft+hw;tvx=Math.abs(tvx)*bc;hit=true;}
-      else if(tx+hw>=tRight){tx=tRight-hw;tvx=-Math.abs(tvx)*bc;hit=true;}
-    }
+    if(tx-hw<=WALL){tx=WALL+hw;tvx=Math.abs(tvx)*bc;hit=true;}
+    else if(tx+hw>=W-WALL){tx=W-WALL-hw;tvx=-Math.abs(tvx)*bc;hit=true;}
     if(!hit){
       for(const p of S.plats){
         const pR=p.x+p.w,pB=p.y+p.h;
@@ -941,6 +639,8 @@ function simTrajectory(sx,sy,vx0,vy0,totalSteps){
         const fromLeft=(ptx+hw)<=p.x,fromRight=(ptx-hw)>=pR;
         if(fromTop){
           ty=p.y-hh;tvx*=pf;
+          // Early exit: player has come to rest on a platform — no point
+          // drawing further since the trajectory ends here in practice.
           if(Math.abs(tvx)<0.8&&Math.abs(tvy)<1.5){
             segs[segs.length-1].dots.push({x:tx,y:ty});
             if(segs[segs.length-1].dots.length===0) segs.pop();
@@ -969,12 +669,10 @@ function simTrajectory(sx,sy,vx0,vy0,totalSteps){
 
 function drawCastleWall(){
   const bH=16,bW=32;
-  // PHASE 1: S.cam.y
-  const topWorldRow=Math.floor(S.cam.y/bH);
+  const topWorldRow=Math.floor(S.cam/bH);
   for(let row=topWorldRow-1;row<=topWorldRow+Math.ceil(H/bH)+1;row++){
     const off=(row%2===0)?0:bW/2;
-    // PHASE 1: S.cam.y
-    const wy=Math.round((row*bH)-S.cam.y);
+    const wy=Math.round((row*bH)-S.cam);
     const shade=row%3===0?'#2a2520':row%3===1?'#252018':'#221e15';
     for(let col=-1;col<=Math.ceil(W/bW)+1;col++){
       const bx=Math.round(col*bW+off);
@@ -1005,134 +703,40 @@ function drawTorch(x,y){
   ctx.fillStyle='rgba(255,255,180,0.8)';ctx.beginPath();ctx.ellipse(x,y+fl*0.1,1,3,0,0,Math.PI*2);ctx.fill();
 }
 
-// P4: Draws one tower's walls. When exterior=true (viewing from outside),
-// also fills the interior gap with a dark silhouette and brightens the break bleed.
-function drawOneTowerWalls(tw, camX, camY, exterior){
-  const scrLeft  = (tw.worldX - camX)|0;
-  const scrRight = (tw.worldX + tw.width - camX)|0;
-
-  // P4: when outside, fill interior of tower as a dark silhouette
-  if(exterior){
-    ctx.fillStyle='#1a1612';
-    ctx.fillRect(scrLeft, 0, scrRight - scrLeft, H);
+function drawWalls(){
+  for(let y=0;y<H;y+=12){
+    ctx.fillStyle=y%24<12?'#3a3530':'#332f2a';
+    ctx.fillRect(0,y,WALL,12);
   }
-
-  ['left','right'].forEach(side => {
-    const sx = side === 'left'
-      ? scrLeft
-      : (tw.worldX + tw.width - tw.wallThickness - camX)|0;
-
-    const sideBreaks = tw.breaks
-      .filter(b => b.side === side)
-      .sort((a, b) => a.yTop - b.yTop);
-
-    const visTop = camY - 12;
-    const visBot = camY + H + 12;
-
-    // Build solid wall segments between breaks
-    const solidSegs = [];
-    let cur = visTop;
-    for (const brk of sideBreaks) {
-      if (cur < brk.yTop) solidSegs.push({ wy1: cur, wy2: Math.min(brk.yTop, visBot) });
-      cur = Math.max(cur, brk.yBottom);
-    }
-    if (cur < visBot) solidSegs.push({ wy1: cur, wy2: visBot });
-
-    for (const seg of solidSegs) {
-      const sy1 = (seg.wy1 - camY)|0;
-      const sy2 = (seg.wy2 - camY)|0;
-      const rowStart = Math.floor(sy1 / 12) * 12;
-      for (let y = rowStart; y < sy2; y += 12) {
-        const clipTop = Math.max(y, sy1);
-        const clipH   = Math.min(y + 12, sy2) - clipTop;
-        if (clipH <= 0) continue;
-        ctx.fillStyle = y % 24 < 12 ? '#3a3530' : '#332f2a';
-        ctx.fillRect(sx, clipTop, tw.wallThickness, clipH);
-      }
-      ctx.fillStyle = '#555';
-      if (side === 'left') {
-        ctx.fillRect(sx + tw.wallThickness - 2, sy1, 2, sy2 - sy1);
-      } else {
-        ctx.fillRect(sx, sy1, 2, sy2 - sy1);
-      }
-    }
-
-    for (const brk of sideBreaks) {
-      const bsy1 = (brk.yTop    - camY)|0;
-      const bsy2 = (brk.yBottom - camY)|0;
-      if (bsy2 < -30 || bsy1 > H + 30) continue;
-
-      if (bsy1 > -15 && bsy1 < H + 15) {
-        ctx.fillStyle = '#111008';
-        ctx.fillRect(sx, bsy1 - 4, tw.wallThickness, 5);
-        ctx.fillStyle = '#666';
-        ctx.fillRect(sx + 2, bsy1 - 2, tw.wallThickness - 4, 2);
-      }
-      if (bsy2 > -15 && bsy2 < H + 15) {
-        ctx.fillStyle = '#111008';
-        ctx.fillRect(sx, bsy2, tw.wallThickness, 5);
-        ctx.fillStyle = '#666';
-        ctx.fillRect(sx + 2, bsy2 + 2, tw.wallThickness - 4, 2);
-      }
-
-      const clipY1 = Math.max(0, bsy1);
-      const clipY2 = Math.min(H, bsy2);
-      if (clipY2 > clipY1) {
-        // P4: exterior breaks glow outward (daylight leaking out), interior bleed inward
-        const innerX = side === 'left' ? sx + tw.wallThickness : sx;
-        const outerX = side === 'left' ? sx : sx + tw.wallThickness;
-        const grd = ctx.createLinearGradient(exterior ? outerX : innerX, 0, exterior ? innerX : outerX, 0);
-        const alpha = exterior ? 0.22 : 0.13;
-        grd.addColorStop(0, `rgba(60,130,220,${alpha})`);
-        grd.addColorStop(1, 'rgba(60,130,220,0)');
-        ctx.fillStyle = grd;
-        ctx.fillRect(sx, clipY1, tw.wallThickness, clipY2 - clipY1);
-      }
-    }
-  });
-}
-
-// P4: Routes to draw all visible towers (exterior) or active tower (interior)
-function drawTowerWalls(){
-  const camY = S.cam.y, camX = S.cam.x;
-  const exterior = S.worldMode==='outside' || S.worldMode==='exiting';
-
-  if(exterior){
-    // Draw all towers in world that are on screen
-    for(const tw of S.towers){
-      const scrLeft  = tw.worldX - camX;
-      const scrRight = tw.worldX + tw.width - camX;
-      if(scrRight < -40 || scrLeft > W + 40) continue;
-      drawOneTowerWalls(tw, camX, camY, true);
-    }
-  } else {
-    // Draw active tower interior only
-    drawOneTowerWalls(S.activeTower, camX, camY, false);
+  ctx.fillStyle='#555';ctx.fillRect(WALL-2,0,2,H);
+  for(let y=0;y<H;y+=12){
+    ctx.fillStyle=y%24<12?'#3a3530':'#332f2a';
+    ctx.fillRect(W-WALL,y,WALL,12);
   }
+  ctx.fillStyle='#555';ctx.fillRect(W-WALL,0,2,H);
 }
 
 function drawPlatform(p){
-  const sy=(p.y-S.cam.y)|0;
-  const px=(p.x-S.cam.x)|0;  // P3: world→screen X
+  const sy=(p.y-S.cam)|0;
   if(p.icy){
-    ctx.fillStyle='#445566';ctx.fillRect(px,sy,p.w|0,p.h);
-    ctx.fillStyle='#7aaccc';ctx.fillRect(px,sy,p.w|0,4);
-    ctx.fillStyle='#aaddee';ctx.fillRect(px,sy,p.w|0,2);
+    ctx.fillStyle='#445566';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
+    ctx.fillStyle='#7aaccc';ctx.fillRect(p.x|0,sy,p.w|0,4);
+    ctx.fillStyle='#aaddee';ctx.fillRect(p.x|0,sy,p.w|0,2);
     ctx.fillStyle='#cceeff';
-    for(let i=6;i<p.w-4;i+=14) ctx.fillRect(px+i,sy+1,4,2);
-    ctx.fillStyle='rgba(180,230,255,0.12)';ctx.fillRect(px,sy,p.w|0,p.h);
-    ctx.fillStyle='#334455';ctx.fillRect(px+2,(sy+p.h)|0,p.w|0,4);
+    for(let i=6;i<p.w-4;i+=14) ctx.fillRect((p.x+i)|0,sy+1,4,2);
+    ctx.fillStyle='rgba(180,230,255,0.12)';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
+    ctx.fillStyle='#334455';ctx.fillRect((p.x+2)|0,(sy+p.h)|0,p.w|0,4);
   } else {
-    ctx.fillStyle='#44403a';ctx.fillRect(px,sy,p.w|0,p.h);
-    ctx.fillStyle='#6a6258';ctx.fillRect(px,sy,p.w|0,4);
-    ctx.fillStyle='#7a7268';ctx.fillRect(px,sy,p.w|0,2);
+    ctx.fillStyle='#44403a';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
+    ctx.fillStyle='#6a6258';ctx.fillRect(p.x|0,sy,p.w|0,4);
+    ctx.fillStyle='#7a7268';ctx.fillRect(p.x|0,sy,p.w|0,2);
     ctx.fillStyle='#50483e';
-    for(let i=4;i<p.w-4;i+=18) ctx.fillRect(px+i,sy-5,10,6);
+    for(let i=4;i<p.w-4;i+=18) ctx.fillRect((p.x+i)|0,sy-5,10,6);
     ctx.fillStyle='#33302a';
-    ctx.fillRect(px,sy+6,p.w|0,2);
-    for(let i=20;i<p.w;i+=20) ctx.fillRect(px+i,sy,2,p.h);
-    ctx.fillStyle='rgba(0,0,0,0.25)';ctx.fillRect(px+2,(sy+p.h)|0,p.w|0,4);
-    if(p.torch) drawTorch(px+p.w/2,sy-2);
+    ctx.fillRect(p.x|0,sy+6,p.w|0,2);
+    for(let i=20;i<p.w;i+=20) ctx.fillRect((p.x+i)|0,sy,2,p.h);
+    ctx.fillStyle='rgba(0,0,0,0.25)';ctx.fillRect((p.x+2)|0,(sy+p.h)|0,p.w|0,4);
+    if(p.torch) drawTorch(p.x+p.w/2,sy-2);
   }
 }
 
@@ -1140,38 +744,46 @@ function drawSpikesOnPlat(p) {
   const spikes = getPlatSpikes(p);
   if (!spikes.length) return;
 
-  const sy = (p.y - S.cam.y)|0;
+  const sy = (p.y - S.cam)|0;
 
   const absScore  = Math.abs(p.y) / 10;
   const density   = Math.min(1, (absScore - SPIKE_START) / (SPIKE_FULL - SPIKE_START));
   const glowAlpha = 0.08 + density * 0.14;
 
   for (const wx of spikes) {
-    const x = (wx - S.cam.x)|0;  // P3: world→screen X
+    const x = wx|0;
+
+    // Per-spike glow — only appears beneath each individual spike, not the whole platform
     ctx.fillStyle = `rgba(255,40,0,${glowAlpha})`;
     ctx.fillRect(x - 5, (sy - 10)|0, 10, 10);
+
     ctx.fillStyle = '#1a1218';
     ctx.fillRect(x,     sy - 10, 2, 2);
     ctx.fillRect(x - 1, sy -  8, 4, 2);
     ctx.fillRect(x - 2, sy -  6, 6, 2);
     ctx.fillRect(x - 3, sy -  4, 8, 2);
     ctx.fillRect(x - 3, sy -  2, 8, 2);
+
     ctx.fillStyle = '#7a7e88';
     ctx.fillRect(x,     sy - 9, 2, 2);
     ctx.fillRect(x - 1, sy - 7, 4, 2);
     ctx.fillRect(x - 2, sy - 5, 6, 2);
     ctx.fillRect(x - 3, sy - 3, 8, 2);
     ctx.fillRect(x - 3, sy - 1, 8, 2);
+
     ctx.fillStyle = '#9aa0aa';
     ctx.fillRect(x,     sy - 9, 1, 2);
     ctx.fillRect(x - 1, sy - 7, 2, 2);
     ctx.fillRect(x - 2, sy - 5, 3, 2);
+
     ctx.fillStyle = '#d0d8e0';
     ctx.fillRect(x, sy - 10, 1, 1);
+
     ctx.fillStyle = '#505560';
     ctx.fillRect(x + 1, sy - 7, 2, 2);
     ctx.fillRect(x + 2, sy - 5, 2, 2);
     ctx.fillRect(x + 3, sy - 3, 2, 4);
+
     const bloodR = (120 + density * 100)|0;
     const bloodA = 0.25 + density * 0.5;
     ctx.fillStyle = `rgba(${bloodR},0,0,${bloodA})`;
@@ -1182,25 +794,32 @@ function drawSpikesOnPlat(p) {
 
 function drawMushrooms(){
   for(const m of S.mushrooms){
-    const sy = (m.y - S.cam.y)|0;
+    const sy = (m.y - S.cam)|0;
     if(sy < -60 || sy > H+20) continue;
-    const mx = (m.x - S.cam.x)|0;  // P3: world→screen X
+    const mx = m.x|0;
 
+    // ── Spore cloud ──────────────────────────────────────────────────────────
     if(m.cloud){
-      const t = m.cloud.timer / m.cloud.maxTimer;
+      const t = m.cloud.timer / m.cloud.maxTimer; // 1→0 as cloud fades
       const pulse = 0.7 + 0.3*Math.sin(S.tick*0.18);
       const outerR = CLOUD_RADIUS + 6*Math.sin(S.tick*0.09);
+
+      // Layered radial gradients give the cloud a lumpy, volumetric feel
       const g1 = ctx.createRadialGradient(mx, sy-8, 0, mx, sy-8, outerR);
       g1.addColorStop(0, `rgba(140,200,60,${0.38*t*pulse})`);
       g1.addColorStop(0.5,`rgba(100,170,30,${0.22*t*pulse})`);
       g1.addColorStop(1,  `rgba(60,120,10,0)`);
       ctx.fillStyle = g1;
       ctx.beginPath(); ctx.arc(mx, sy-8, outerR, 0, Math.PI*2); ctx.fill();
+
+      // Secondary lobe offset slightly for a less-perfect-circle feel
       const g2 = ctx.createRadialGradient(mx+8, sy-14, 0, mx+8, sy-14, outerR*0.65);
       g2.addColorStop(0, `rgba(160,210,80,${0.22*t*pulse})`);
       g2.addColorStop(1,  `rgba(80,150,20,0)`);
       ctx.fillStyle = g2;
       ctx.beginPath(); ctx.arc(mx+8, sy-14, outerR*0.65, 0, Math.PI*2); ctx.fill();
+
+      // Drifting spore particles
       for(let i=0;i<5;i++){
         const angle = (S.tick*0.04 + i*1.26);
         const r = (12 + i*4) * t;
@@ -1211,6 +830,7 @@ function drawMushrooms(){
       }
     }
 
+    // ── Warning glow when puff is imminent ───────────────────────────────────
     if(!m.cloud && m.puffTimer < 90){
       const warn = 1 - m.puffTimer/90;
       const wPulse = 0.5 + 0.5*Math.sin(S.tick*0.25);
@@ -1218,27 +838,39 @@ function drawMushrooms(){
       ctx.beginPath(); ctx.arc(mx, sy-4, 20, 0, Math.PI*2); ctx.fill();
     }
 
+    // ── Pixel-art mushroom body ───────────────────────────────────────────────
+    // Stem
     ctx.fillStyle = '#c8b89a';
     ctx.fillRect(mx-3, sy-7, 6, 7);
     ctx.fillStyle = '#ede0c8';
     ctx.fillRect(mx-2, sy-6, 2, 5);
     ctx.fillStyle = '#a89070';
     ctx.fillRect(mx+1, sy-7, 2, 7);
+
+    // Cap shadow
     ctx.fillStyle = '#1a1a10';
     ctx.fillRect(mx-7, sy-14, 14, 8);
+
+    // Cap body — colour shifts slightly when warning
     const capR = (!m.cloud && m.puffTimer < 90)
       ? (120 + Math.floor(80*(1-m.puffTimer/90)))|0 : 180;
     ctx.fillStyle = `rgb(${capR},48,20)`;
     ctx.fillRect(mx-6, sy-15, 12, 8);
     ctx.fillRect(mx-4, sy-17, 8,  2);
     ctx.fillRect(mx-2, sy-18, 4,  1);
+
+    // Cap highlight (left face)
     ctx.fillStyle = `rgb(${Math.min(255,capR+60)},90,50)`;
     ctx.fillRect(mx-5, sy-15, 4, 3);
     ctx.fillRect(mx-3, sy-16, 2, 1);
+
+    // White spots
     ctx.fillStyle = '#f0f0e8';
     ctx.fillRect(mx-4, sy-14, 3, 3);
     ctx.fillRect(mx+2, sy-13, 2, 2);
     ctx.fillRect(mx-1, sy-16, 2, 2);
+
+    // Spot shading
     ctx.fillStyle = '#c8c8b8';
     ctx.fillRect(mx-3, sy-12, 1, 1);
     ctx.fillRect(mx+3, sy-12, 1, 1);
@@ -1247,25 +879,24 @@ function drawMushrooms(){
 
 function drawGold(coin){
   if(coin.collected) return;
-  const sy=(coin.y-S.cam.y+Math.sin(coin.bob)*3)|0;
-  const cx=(coin.x-S.cam.x)|0;  // P3: world→screen X
-  const g=ctx.createRadialGradient(cx,sy,0,cx,sy,12);
+  const sy=(coin.y-S.cam+Math.sin(coin.bob)*3)|0;
+  const g=ctx.createRadialGradient(coin.x,sy,0,coin.x,sy,12);
   g.addColorStop(0,'rgba(255,220,80,0.3)');g.addColorStop(1,'rgba(255,180,0,0)');
-  ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,sy,12,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#cc9900';ctx.fillRect((cx-6)|0,(sy-6)|0,12,12);
-  ctx.fillStyle='#ffcc00';ctx.fillRect((cx-5)|0,(sy-6)|0,10,12);
-  ctx.fillStyle='#ffe066';ctx.fillRect((cx-4)|0,(sy-5)|0,8,10);
-  ctx.fillStyle='#fff8aa';ctx.fillRect((cx-3)|0,(sy-4)|0,3,3);
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(coin.x,sy,12,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#cc9900';ctx.fillRect((coin.x-6)|0,(sy-6)|0,12,12);
+  ctx.fillStyle='#ffcc00';ctx.fillRect((coin.x-5)|0,(sy-6)|0,10,12);
+  ctx.fillStyle='#ffe066';ctx.fillRect((coin.x-4)|0,(sy-5)|0,8,10);
+  ctx.fillStyle='#fff8aa';ctx.fillRect((coin.x-3)|0,(sy-4)|0,3,3);
   ctx.fillStyle='#aa7700';
-  ctx.fillRect((cx-1)|0,(sy-3)|0,2,6);
-  ctx.fillRect((cx-3)|0,(sy-1)|0,6,2);
-  ctx.fillRect((cx-1)|0,(sy-5)|0,2,2);
+  ctx.fillRect((coin.x-1)|0,(sy-3)|0,2,6);
+  ctx.fillRect((coin.x-3)|0,(sy-1)|0,6,2);
+  ctx.fillRect((coin.x-1)|0,(sy-5)|0,2,2);
 }
 
 function drawHeart(heart){
   if(heart.collected) return;
-  const sy=(heart.y-S.cam.y+Math.sin(heart.bob)*3)|0;
-  const hx=(heart.x-S.cam.x)|0;  // P3: world→screen X
+  const sy=(heart.y-S.cam+Math.sin(heart.bob)*3)|0;
+  const hx=heart.x|0;
   const grd=ctx.createRadialGradient(hx,sy,0,hx,sy,16);
   grd.addColorStop(0,'rgba(255,100,140,0.35)');grd.addColorStop(1,'rgba(255,50,80,0)');
   ctx.fillStyle=grd;ctx.beginPath();ctx.arc(hx,sy,16,0,Math.PI*2);ctx.fill();
@@ -1288,8 +919,7 @@ function drawKnight(){
   const pl=S.pl;
   const flash=pl.damageFlash>0&&Math.floor(pl.damageFlash/4)%2===0;
   if(flash) ctx.globalAlpha=0.35;
-  // P3: world→screen X and Y
-  const x=(pl.x-S.cam.x-pl.w/2)|0,y=(pl.y-pl.h/2-S.cam.y)|0,w=pl.w,h=pl.h;
+  const x=(pl.x-pl.w/2)|0,y=(pl.y-pl.h/2-S.cam)|0,w=pl.w,h=pl.h;
   const moving=Math.abs(pl.vx)>0.5,legOff=pl.onG&&moving?Math.sin(S.tick*0.3)*3:0;
   ctx.fillStyle='rgba(0,0,0,0.25)';ctx.beginPath();ctx.ellipse(x+w/2,y+h+3,w/2-2,4,0,0,Math.PI*2);ctx.fill();
   ctx.fillStyle='#555566';ctx.fillRect(x+2,y+h-8,6,8+legOff);ctx.fillRect(x+w-8,y+h-8,6,8-legOff);
@@ -1329,27 +959,25 @@ function drawKnight(){
 }
 
 function drawBat(bt){
-  const sy=(bt.wy-S.cam.y)|0;
-  const bsx=(bt.x-S.cam.x)|0;  // P3: world→screen X
+  const sy=(bt.wy-S.cam)|0;
   if(sy<-30||sy>H+30) return;
-  if(bsx<-30||bsx>W+30) return;  // P3: skip off-screen horizontal
   const agro=bt.state==='agro'||bt.state==='diving';
   const flash=bt.hurtTimer>0&&Math.floor(bt.hurtTimer/3)%2===0;
   const wing=Math.sin(bt.flap)*(agro?10:6);
   if(flash) ctx.globalAlpha=0.4;
-  if(agro&&bt.state==='agro'){ctx.fillStyle='rgba(255,140,0,0.12)';ctx.beginPath();ctx.arc(bsx,sy,10,0,Math.PI*2);ctx.fill();}
-  if(agro&&bt.state==='diving'){ctx.fillStyle='rgba(255,100,0,0.18)';ctx.beginPath();ctx.arc(bsx,sy,12,0,Math.PI*2);ctx.fill();}
+  if(agro&&bt.state==='agro'){ctx.fillStyle='rgba(255,140,0,0.12)';ctx.beginPath();ctx.arc(bt.x,sy,10,0,Math.PI*2);ctx.fill();}
+  if(agro&&bt.state==='diving'){ctx.fillStyle='rgba(255,100,0,0.18)';ctx.beginPath();ctx.arc(bt.x,sy,12,0,Math.PI*2);ctx.fill();}
   ctx.fillStyle=agro?'#3d1010':'#2a2040';
-  ctx.fillRect((bsx-3)|0,(sy-2)|0,6,5);
-  ctx.fillRect((bsx-12)|0,(sy-2+wing)|0,9,4);
-  ctx.fillRect((bsx+3)|0,(sy-2+wing)|0,9,4);
-  ctx.fillRect((bsx-14)|0,(sy+1+wing)|0,3,2);
-  ctx.fillRect((bsx+11)|0,(sy+1+wing)|0,3,2);
+  ctx.fillRect((bt.x-3)|0,(sy-2)|0,6,5);
+  ctx.fillRect((bt.x-12)|0,(sy-2+wing)|0,9,4);
+  ctx.fillRect((bt.x+3)|0,(sy-2+wing)|0,9,4);
+  ctx.fillRect((bt.x-14)|0,(sy+1+wing)|0,3,2);
+  ctx.fillRect((bt.x+11)|0,(sy+1+wing)|0,3,2);
   ctx.fillStyle=agro?'#5a1818':'#3d3060';
-  ctx.fillRect((bsx-11)|0,(sy-1+wing)|0,7,2);
-  ctx.fillRect((bsx+4)|0,(sy-1+wing)|0,7,2);
+  ctx.fillRect((bt.x-11)|0,(sy-1+wing)|0,7,2);
+  ctx.fillRect((bt.x+4)|0,(sy-1+wing)|0,7,2);
   ctx.fillStyle=bt.state==='diving'?'#ff6600':agro?'#cc6600':'#441111';
-  ctx.fillRect((bsx-2)|0,(sy-1)|0,1,1);ctx.fillRect((bsx+1)|0,(sy-1)|0,1,1);
+  ctx.fillRect((bt.x-2)|0,(sy-1)|0,1,1);ctx.fillRect((bt.x+1)|0,(sy-1)|0,1,1);
   if(flash) ctx.globalAlpha=1;
 }
 
@@ -1357,8 +985,7 @@ function drawSling(){
   if(!drag) return;
   const pl=S.pl;
   const ps={x:pl.x,y:pl.y};
-  const camY=S.cam.y;
-  const camX=S.cam.x;  // P3
+  const camY=S.cam;
   const dx=drag.sx-drag.cx,dy=drag.sy-drag.cy,dist=Math.sqrt(dx*dx+dy*dy);
   if(dist<4) return;
   const canFire=canLaunch();
@@ -1371,9 +998,14 @@ function drawSling(){
   ctx.beginPath();ctx.moveTo(drag.sx,drag.sy);ctx.lineTo(drag.cx,drag.cy);ctx.stroke();
   ctx.setLineDash([]);ctx.restore();
 
+  // Divide by power so weak shots get more steps and cover the same visual
+  // distance as strong ones — preview length stays constant at all power levels.
   const totalSteps=Math.floor(upgVal('preview')*3/Math.max(pw,0.15));
   const segs=simTrajectory(ps.x,ps.y,vx0,vy0,totalSteps);
 
+  // Level 0 = initial arc only (1 seg), level N = N rebounds (N+1 segs).
+  // If the step budget runs out before reaching the Nth rebound, the segs
+  // array will simply be shorter — length naturally takes priority over count.
   const maxSegs=upgLevels['preview']+1;
   const drawSegs=segs.slice(0,maxSegs);
 
@@ -1389,14 +1021,15 @@ function drawSling(){
       const alpha=fade*segAlpha;
       if(alpha<0.02) return;
       ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
-      ctx.beginPath();ctx.arc(d.x-camX,d.y-camY,r,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(d.x,d.y-camY,r,0,Math.PI*2);ctx.fill();
     });
+    // X marker at each bounce point
     if(seg.bounced&&si<drawSegs.length-1&&seg.dots.length>0){
       const last=seg.dots[seg.dots.length-1];
-      const lsx=last.x-camX, lsy=last.y-camY;
+      const lsy=last.y-camY;
       ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},0.9)`;ctx.lineWidth=1.5;
-      ctx.beginPath();ctx.moveTo(lsx-4,lsy-4);ctx.lineTo(lsx+4,lsy+4);ctx.stroke();
-      ctx.beginPath();ctx.moveTo(lsx+4,lsy-4);ctx.lineTo(lsx-4,lsy+4);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(last.x-4,lsy-4);ctx.lineTo(last.x+4,lsy+4);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(last.x+4,lsy-4);ctx.lineTo(last.x-4,lsy+4);ctx.stroke();
     }
   });
   ctx.globalAlpha=1;
@@ -1418,8 +1051,7 @@ function drawFloats(){
 function drawSky(){
   const t=Math.max(0,Math.min(1,S.score/500));
   ctx.fillStyle=`rgb(${8+t*4|0},${8+t*3|0},${22+t*10|0})`;ctx.fillRect(0,0,W,H);
-  // PHASE 1: S.cam.y
-  const moonY=(((-2000-S.cam.y)%(H*8)+H*8)%(H*8))-H;
+  const moonY=(((-2000-S.cam)%(H*8)+H*8)%(H*8))-H;
   if(moonY>-60&&moonY<H+60){
     ctx.fillStyle='rgba(255,240,180,0.12)';ctx.beginPath();ctx.arc(W/2,moonY,50,0,Math.PI*2);ctx.fill();
     ctx.fillStyle='#fffde0';ctx.beginPath();ctx.arc(W/2,moonY,22,0,Math.PI*2);ctx.fill();
@@ -1427,8 +1059,7 @@ function drawSky(){
   }
   for(let i=0;i<120;i++){
     const sx=hashY(i*17.3)*W,wy=hashY(i*31.7)*H*10-H*5;
-    // PHASE 1: S.cam.y
-    const sy=((wy-S.cam.y)%(H*8)+H*8)%(H*8)-H;
+    const sy=((wy-S.cam)%(H*8)+H*8)%(H*8)-H;
     if(sy<0||sy>H) continue;
     const twink=0.4+0.6*Math.abs(Math.sin(S.tick*0.02+i));
     ctx.fillStyle=`rgba(255,245,200,${twink*0.9})`;
@@ -1437,107 +1068,10 @@ function drawSky(){
   }
 }
 
-// P6: Red fall-danger overlay when outside and plummeting
-function drawFallWarning(){
-  const pl=S.pl;
-  const outside=S.worldMode==='outside'||S.worldMode==='exiting'||S.worldMode==='entering';
-  if(!outside) return;
-  const fallDist = pl.y - pl.lastGroundY;
-  if(fallDist < 1000) return;
-  const danger = Math.min(1, (fallDist - 1000) / 2000); // 0→1 over 1000→3000 units
-
-  // Red bottom-to-mid gradient
-  const grad = ctx.createLinearGradient(0, H * 0.35, 0, H);
-  grad.addColorStop(0, 'rgba(180,0,0,0)');
-  grad.addColorStop(1, `rgba(180,0,0,${danger * 0.55})`);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-
-  // Pulsing edge vignette when very close to death
-  if(danger > 0.55){
-    const pulse = 0.5 + 0.5 * Math.sin(S.tick * 0.18);
-    const edgeAlpha = (danger - 0.55) / 0.45 * 0.5 * pulse;
-    ctx.fillStyle = `rgba(220,0,0,${edgeAlpha})`;
-    ctx.fillRect(0, 0, 8, H);
-    ctx.fillRect(W-8, 0, 8, H);
-    ctx.fillRect(0, H-8, W, 8);
-  }
-
-  // Warning text
-  if(danger > 0.35){
-    const pulse = 0.5 + 0.5 * Math.sin(S.tick * 0.2);
-    const alpha = (0.55 + 0.45 * pulse) * danger;
-    ctx.fillStyle = `rgba(255,70,40,${alpha})`;
-    ctx.font = 'bold 11px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('⚠ NO GROUND BELOW ⚠', W/2, H - 16);
-    ctx.textAlign = 'left';
-  }
-}
-
-// P7: Outside HUD — compass arrow to nearest tower + break-opening indicators
-function drawOutsideHUD(){
-  if(S.worldMode==='tower') return;
-
-  // Compass: find nearest tower by X distance and draw a directional arrow
-  let nearest=null, nearestDx=Infinity;
-  for(const tw of S.towers){
-    const twCx = tw.worldX + tw.width/2;
-    const dx = twCx - S.pl.x;
-    if(Math.abs(dx) < Math.abs(nearestDx)){ nearestDx=dx; nearest=tw; }
-  }
-
-  if(nearest){
-    const scrTwL = nearest.worldX - S.cam.x;
-    const scrTwR = nearest.worldX + nearest.width - S.cam.x;
-    const towerOnScreen = scrTwR > 0 && scrTwL < W;
-
-    if(!towerOnScreen){
-      // Off-screen — draw edge arrow
-      const dir = nearestDx > 0 ? 1 : -1;
-      const ax = dir > 0 ? W - 22 : 22;
-      const ay = H/2;
-      ctx.globalAlpha = 0.85;
-      ctx.fillStyle = '#ffcc44';
-      ctx.font = 'bold 18px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(dir > 0 ? '▶' : '◀', ax, ay + 6);
-      ctx.font = '7px monospace';
-      ctx.fillStyle = '#ffdd88';
-      ctx.fillText('TOWER', ax, ay + 18);
-      ctx.globalAlpha = 1;
-      ctx.textAlign = 'left';
-    } else {
-      // Tower is on screen — show entry indicator on each visible break
-      for(const tw of S.towers){
-        const scrL = tw.worldX - S.cam.x;
-        const scrR = tw.worldX + tw.width - S.cam.x;
-        if(scrR < -20 || scrL > W + 20) continue;
-        for(const brk of tw.breaks){
-          const brkMidY = (brk.yTop + brk.yBottom) / 2 - S.cam.y;
-          if(brkMidY < -20 || brkMidY > H + 20) continue;
-          const pulse = 0.5 + 0.5 * Math.sin(S.tick * 0.12 + brk.yTop * 0.01);
-          ctx.globalAlpha = 0.5 + 0.5 * pulse;
-          ctx.fillStyle = '#88ddff';
-          ctx.font = '13px monospace';
-          ctx.textAlign = 'center';
-          const bx = brk.side === 'left'
-            ? (tw.worldX + tw.wallThickness - S.cam.x)|0
-            : (tw.worldX + tw.width - tw.wallThickness - S.cam.x)|0;
-          ctx.fillText(brk.side === 'left' ? '▷' : '◁', bx, brkMidY + 5);
-          ctx.globalAlpha = 1;
-        }
-      }
-      ctx.textAlign = 'left';
-    }
-  }
-}
-
 function frame(){
   if(S.alive&&!paused) update(S);
   drawSky();
-  // P4: castle-wall brick background only while fully inside a tower
-  if(S.worldMode==='tower'||S.worldMode==='entering') drawCastleWall();
+  drawCastleWall();
   for(const bt of S.bats) drawBat(bt);
   for(const p of S.plats){
     drawPlatform(p);
@@ -1547,21 +1081,15 @@ function frame(){
   for(const h of S.hearts) drawHeart(h);
   drawMushrooms();
   drawKnight();
-  // PHASE 2: drawTowerWalls() replaces drawWalls() — handles breaks
-  drawTowerWalls();
+  drawWalls();
   drawSling();
-  // P6: fall danger overlay (drawn before vignette so vignette covers edges)
-  drawFallWarning();
   if(paused){ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,W,H);}
   const vig=ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
   vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,0.45)');
   ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
   ctx.fillStyle='rgba(0,0,0,0.04)';for(let i=0;i<H;i+=2)ctx.fillRect(0,i,W,1);
-  // P7: outside HUD compass and break indicators
-  drawOutsideHUD();
   if(S.pl.onG&&!drag&&!paused&&S.tick%60<38){
-    // PHASE 1: S.cam.y
-    const py=S.pl.y-S.cam.y+S.pl.h/2+22;
+    const py=S.pl.y-S.cam+S.pl.h/2+22;
     ctx.fillStyle='rgba(255,220,120,.7)';ctx.font='bold 9px monospace';ctx.textAlign='center';
     ctx.fillText('DRAG ANYWHERE TO LAUNCH!',W/2,py);ctx.textAlign='left';
   }
