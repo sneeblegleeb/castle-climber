@@ -40,9 +40,15 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 .upg-name { font-size:11px; color:#f0dfa0; letter-spacing:1px; }
 .upg-desc { font-size:9px; color:#886644; margin-top:1px; }
 .upg-lvl { font-size:9px; color:#88cc88; margin-top:1px; }
+/* Button group: buy on top, sell below */
+.upg-btn-group { display:flex; flex-direction:column; gap:3px; }
 .upg-btn { background:#2a1f0a; border:2px solid #886633; color:#ffdd00; font-family:monospace; font-size:10px; padding:4px 8px; cursor:pointer; white-space:nowrap; min-width:64px; text-align:center; }
 .upg-btn:hover { background:#443311; border-color:#ffdd00; }
 .upg-btn.cant { border-color:#333; color:#555; cursor:default; }
+/* Sell button style */
+.sell-btn { background:#1a0a08; border:2px solid #884422; color:#ff9966; }
+.sell-btn:hover { background:#2a1208; border-color:#ff6633; color:#ffcc99; }
+.sell-btn.cant { border-color:#2a1a14; color:#442211; cursor:default; background:#100806; }
 .panel-btns { display:flex; gap:8px; justify-content:center; margin-top:14px; flex-wrap:wrap; }
 .panel-btns button { padding:8px 14px; background:#aa8833; border:2px solid #ffdd00; color:#000; font-size:11px; font-family:monospace; cursor:pointer; letter-spacing:1px; font-weight:bold; }
 .panel-btns button.danger { background:#882222; border-color:#ff6644; color:#fff; }
@@ -120,22 +126,28 @@ const SAVE_KEY='castle_climber_save_v2';
 
 // ── Upgrades ─────────────────────────────────────────────────────────────────
 const UPGRADES=[
-  {id:'power',    name:'TREBUCHET ARM',    desc:'Mightier launch force',                 icon:'⚔', base:15,  inc:0.9,   baseCost:24,  costMult:1.65},
-  {id:'preview',  name:'WIZARD SIGHT',     desc:'Longer trajectory preview arc',         icon:'🔮',base:2,   inc:1.5,   baseCost:16,  costMult:1.3},
-  {id:'friction', name:'IRON SABATONS',    desc:'Better grip upon the stonework',        icon:'🛡', base:0.82,inc:-0.04, baseCost:20,  costMult:1.35},
-  {id:'gravity',  name:'FEATHERFALL RUNE', desc:'Enchantment lightens thy burden',       icon:'✨',base:0.40,inc:-0.02, baseCost:32,  costMult:1.5,  maxLvl:15},
-  {id:'bounce',   name:'RUNED GAUNTLETS',  desc:'Rebound harder off castle walls',       icon:'💎',base:0.6, inc:0.08,  baseCost:16,  costMult:1.45},
-  {id:'coinmag',  name:'GILDED AURA',      desc:'Gold is drawn to thee from afar',       icon:'⚜', base:14,  inc:6,     baseCost:12,  costMult:1.4},
-  {id:'coinrate', name:'FORTUNE BLESSING', desc:'More gold coins float through the castle',icon:'🪙',base:1.0, inc:0.4,   baseCost:20,  costMult:1.55},
-  {id:'coyote',   name:"SQUIRE'S GRACE",   desc:'Extra moments to leap from ledges',     icon:'🐾',base:3,   inc:4,     baseCost:24,  costMult:1.35},
-  {id:'airbrake', name:'CAPE OF CONTROL',  desc:'Thy cloak steadies thine arc',          icon:'🧣',base:1.0, inc:-0.03, baseCost:16,  costMult:1.4},
-  {id:'coinval',  name:'ROYAL TITHE',      desc:"Each coin bears the king's bounty",     icon:'👑',base:1,   inc:1,     baseCost:40,  costMult:1.75},
-  {id:'maxhp',    name:'VITALITY OATH',    desc:'Gain an extra heart of health',         icon:'❤️',base:4,   inc:1,     baseCost:32,  costMult:1.55},
-  {id:'fallres',  name:'IRONFLESH WARD',   desc:'Reduces fall damage taken',             icon:'🪨',base:0,   inc:0.15,  baseCost:22,  costMult:1.35},
-  {id:'airjumps', name:'WINGED BOOTS',     desc:'Extra mid-air launches per flight',     icon:'🦅',base:0,   inc:1,     baseCost:48,  costMult:1.9,  maxLvl:5},
-  {id:'batradius',name:'WARDING SIGIL',    desc:'Bats cannot agro within a wider radius', icon:'🔯',base:80,  inc:25,    baseCost:18,  costMult:1.3},
-  {id:'heartrate',name:'BLESSED GROUNDS',  desc:'Hearts of healing appear more often',   icon:'💖',base:0.04,inc:0.025, baseCost:24,  costMult:1.4},
-  {id:'sporeres', name:'SPORE WARD',       desc:'Thy armor filters the toxic miasma longer', icon:'🍄',base:70,  inc:25,    baseCost:20,  costMult:1.4},
+  {id:'power',    name:'TREBUCHET ARM',    desc:'Mightier launch force',                    icon:'⚔', base:15,  inc:0.9,   baseCost:24,  costMult:1.65},
+  {id:'preview',  name:'WIZARD SIGHT',     desc:'Longer trajectory preview arc',            icon:'🔮',base:2,   inc:1.5,   baseCost:16,  costMult:1.3},
+  {id:'friction', name:'IRON SABATONS',    desc:'Better grip upon the stonework',           icon:'🛡', base:0.82,inc:-0.04, baseCost:20,  costMult:1.35},
+  {id:'gravity',  name:'FEATHERFALL RUNE', desc:'Enchantment lightens thy burden',          icon:'✨',base:0.40,inc:-0.02, baseCost:32,  costMult:1.5,  maxLvl:15},
+  {id:'bounce',   name:'RUNED GAUNTLETS',  desc:'Rebound harder off castle walls',          icon:'💎',base:0.6, inc:0.08,  baseCost:16,  costMult:1.45},
+  {id:'coinmag',  name:'GILDED AURA',      desc:'Gold is drawn to thee from afar',          icon:'⚜', base:14,  inc:6,     baseCost:12,  costMult:1.4},
+  {id:'coinrate', name:'FORTUNE BLESSING', desc:'More gold coins float through the castle', icon:'🪙',base:1.0, inc:0.4,   baseCost:20,  costMult:1.55},
+  // ── NEW: replaced SQUIRE'S GRACE (coyote) with HOURGLASS RUNE (time slow) ──
+  // Coyote time is now a fixed built-in mechanic (3 frames) rather than an upgrade.
+  // Each rank of HOURGLASS RUNE adds 5% speed reduction and 0.5s of slow duration
+  // when the player begins dragging to aim a jump. Time snaps back the instant
+  // the finger/mouse is released and the launch fires.
+  {id:'timeslow', name:'HOURGLASS RUNE',   desc:'Time slows while aiming — more ranks = slower & longer',
+                                                                                             icon:'⏳',base:0,   inc:1,     baseCost:28,  costMult:1.45, maxLvl:10},
+  {id:'airbrake', name:'CAPE OF CONTROL',  desc:'Thy cloak steadies thine arc',             icon:'🧣',base:1.0, inc:-0.03, baseCost:16,  costMult:1.4},
+  {id:'coinval',  name:'ROYAL TITHE',      desc:"Each coin bears the king's bounty",        icon:'👑',base:1,   inc:1,     baseCost:40,  costMult:1.75},
+  {id:'maxhp',    name:'VITALITY OATH',    desc:'Gain an extra heart of health',            icon:'❤️',base:4,   inc:1,     baseCost:32,  costMult:1.55},
+  {id:'fallres',  name:'IRONFLESH WARD',   desc:'Reduces fall damage taken',                icon:'🪨',base:0,   inc:0.15,  baseCost:22,  costMult:1.35},
+  {id:'airjumps', name:'WINGED BOOTS',     desc:'Extra mid-air launches per flight',        icon:'🦅',base:0,   inc:1,     baseCost:48,  costMult:1.9,  maxLvl:5},
+  {id:'batradius',name:'WARDING SIGIL',    desc:'Bats cannot agro within a wider radius',   icon:'🔯',base:80,  inc:25,    baseCost:18,  costMult:1.3},
+  {id:'heartrate',name:'BLESSED GROUNDS',  desc:'Hearts of healing appear more often',      icon:'💖',base:0.04,inc:0.025, baseCost:24,  costMult:1.4},
+  {id:'sporeres', name:'SPORE WARD',       desc:'Thy armor filters the toxic miasma longer',icon:'🍄',base:70,  inc:25,    baseCost:20,  costMult:1.4},
 ];
 
 let upgLevels={};
@@ -144,26 +156,51 @@ let totalCoins=0,best=0,lowest=0;
 
 function upgVal(id){const u=UPGRADES.find(x=>x.id===id);return u.base+upgLevels[id]*u.inc;}
 function upgCost(id){const u=UPGRADES.find(x=>x.id===id);return Math.ceil(u.baseCost*Math.pow(u.costMult,upgLevels[id]));}
+
+// Sell price = half of what was paid for the most recent rank.
+// Cost paid for rank N was upgCost at level N-1, i.e. baseCost * mult^(N-1).
+function upgSellPrice(id){
+  const lvl=upgLevels[id];
+  if(lvl<=0) return 0;
+  const u=UPGRADES.find(x=>x.id===id);
+  return Math.floor(Math.ceil(u.baseCost*Math.pow(u.costMult,lvl-1))/2);
+}
+
 function maxHP(){return upgVal('maxhp')|0;}
 function maxAirJumps(){return upgVal('airjumps')|0;}
 function frictionVal(){return Math.max(0.05, upgVal('friction'));}
 function airbrakeVal(){return Math.max(0.05, upgVal('airbrake'));}
-// Bounce clamped at 0.92 — values >= 1.0 would accelerate the player off walls
-// instead of dampening, breaking physics entirely at level 6+.
 function bounceVal(){return Math.min(0.92, upgVal('bounce'));}
-// FIX 1: Gravity clamped to a minimum so it can never invert and send the player flying upward.
 function gravVal(){return Math.max(0.04, upgVal('gravity'));}
-// Scales bat speed and aggro with depth — bats get meaningfully harder past floor 1000
-// so high-level builds still require skill rather than just stat-checking encounters.
 function batDifficultyScale(score){return 1 + Math.min(2.5, Math.abs(score) / 4000);}
 function batAgroRadius(){return Math.min(upgVal('batradius'), H*0.45);}
 function heartSpawnRate(){return upgVal('heartrate');}
 function sporeToleranceVal(){return upgVal('sporeres');}
 
+// ── Time Slow helpers ─────────────────────────────────────────────────────────
+// Level L gives: slow% = 25 + (L-1)*5,  duration = 60 + (L-1)*30 real frames
+// timeScale 1.0 = normal, 0.75 = 25% slow, etc.
+function timeSlowScale(){
+  const lvl=upgLevels['timeslow'];
+  if(lvl<=0) return 1.0;
+  const slowPct=0.25+(lvl-1)*0.05;        // 0.25 → 0.70 across 10 levels
+  return Math.max(0.30, 1.0-slowPct);
+}
+function timeSlowDuration(){
+  const lvl=upgLevels['timeslow'];
+  if(lvl<=0) return 0;
+  return 60+(lvl-1)*30;                   // frames: 60, 90, 120 … 330
+}
+
 // Mushroom spawn density scales with depth, starting mild and peaking around floor 4500.
 const MUSH_START = 150;
 const MUSH_FULL  = 4500;
 const MUSH_MAX_DENSITY = 0.38;
+
+// ── Time-slow state ───────────────────────────────────────────────────────────
+let timeScale=1.0;       // current game speed multiplier (1=normal, <1=slowed)
+let updateAccum=0;       // fractional tick accumulator for sub-speed updates
+let timeSlowTimer=0;     // real frames remaining before slow expires
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 function saveGame(s){
@@ -199,10 +236,8 @@ function getPlatSpikes(p) {
   if (absScore < SPIKE_START) return [];
   const density = Math.min(1, (absScore - SPIKE_START) / (SPIKE_FULL - SPIKE_START));
   const fillChance = density * SPIKE_MAX_FILL;
-
   const slots = Math.floor((p.w - 4) / SPIKE_SLOT);
   if (slots === 0) return [];
-
   const spikes = [];
   for (let i = 0; i < slots; i++) {
     if (hash2(p.id * 97 + i, 77) < fillChance) {
@@ -215,16 +250,13 @@ function getPlatSpikes(p) {
 function checkSpikeCollision(s) {
   const pl = s.pl;
   if (pl.hurtTimer > 0) return;
-
   const plB  = pl.y + pl.h / 2;
   const plL  = pl.x - pl.w / 2 + 3;
   const plR  = pl.x + pl.w / 2 - 3;
   const SPIKE_H = 9;
-
   for (const p of s.plats) {
     if (plB < p.y - SPIKE_H - 1 || plB > p.y + 3) continue;
     if (plR < p.x || plL > p.x + p.w) continue;
-
     const spikes = getPlatSpikes(p);
     for (const sx of spikes) {
       if (plR > sx - 4 && plL < sx + 4) {
@@ -269,23 +301,16 @@ function mkBat(wy,plY){
     tx:0,ty:0,dvx:0,dvy:0,hurtTimer:0};
 }
 
-// FIX 4: Removed `|| 0` fallback — platforms near y=0 were all colliding on id=0,
-// causing spawn-area platforms to silently vanish.
 function platId(wy){return Math.round(wy/10);}
 
 function gen(s){
   const margin=H*0.75;
   const top=s.cam-margin, bot=s.cam+H+margin;
-
   let mn=Infinity,mx=-Infinity;
   for(const p of s.plats){if(p.y<mn)mn=p.y;if(p.y>mx)mx=p.y;}
   if(!s.plats.length){mn=s.pl.y;mx=s.pl.y;}
   let y=mx; while(y<bot){y+=65+Math.random()*85;if(y<bot)addP(s,y);}
   y=mn;     while(y>top){y-=65+Math.random()*85;if(y>top)addP(s,y);}
-
-  // FIX 5: Coins and hearts use a tighter generation margin than the cull margin.
-  // This prevents the churn where items near the cull boundary are repeatedly
-  // created and immediately destroyed as the player oscillates in one area.
   const coinMargin=H*0.55;
   const ctop=s.cam-coinMargin, cbot=s.cam+H+coinMargin;
   const COIN_BAND=80, HEART_BAND=320;
@@ -293,7 +318,6 @@ function gen(s){
   for(let b=cb0;b<=cb1;b++) tryPlaceCoin(s,b*COIN_BAND,b);
   const hb0=Math.floor(ctop/HEART_BAND), hb1=Math.ceil(cbot/HEART_BAND);
   for(let b=hb0;b<=hb1;b++) tryPlaceHeart(s,b*HEART_BAND,b);
-
   const idle=s.bats.filter(bt=>bt.state==='idle').length;
   let add=8-idle; while(add-->0) s.bats.push(mkBat(s.cam+(Math.random()-.5)*H*2,s.pl.y));
 }
@@ -332,15 +356,13 @@ function tryPlaceMushroom(s, p){
   if(s.mushrooms.some(m=>m.platId===p.id)) return;
   const density = Math.min(1, (absScore - MUSH_START) / (MUSH_FULL - MUSH_START));
   if(hash2(p.id*53+7, 99) > density * MUSH_MAX_DENSITY) return;
-  // Position deterministically along the platform, away from edges
   const mx = p.x + 10 + hash2(p.id, 88) * (p.w - 20);
-  // Stagger initial puff timers so mushrooms don't all puff at once on entry
   const initDelay = 80 + hash2(p.id, 91) * 220;
   s.mushrooms.push({
-    x:mx, y:p.y,       // y = platform top world-Y
+    x:mx, y:p.y,
     platId:p.id,
     puffTimer:initDelay,
-    cloud:null,        // null or {timer, maxTimer} when active
+    cloud:null,
     bob:hash2(p.id,92)*Math.PI*2,
   });
 }
@@ -363,9 +385,6 @@ function cull(s){
   s.plats=s.plats.filter(p=>p.y>t&&p.y<b);
   s.coins=s.coins.filter(c=>!c.collected&&c.y>t&&c.y<b);
   s.hearts=s.hearts.filter(h=>!h.collected&&h.y>t&&h.y<b);
-  // FIX 2: All bats (regardless of state) are culled when far offscreen.
-  // Previously only idle bats were culled, letting agro/diving/retreating bats
-  // accumulate forever and degrade performance over long runs.
   s.bats=s.bats.filter(bt=>bt.wy>t-H*1.5&&bt.wy<b+H*1.5);
   s.mushrooms=s.mushrooms.filter(m=>m.y>t&&m.y<b);
 }
@@ -376,16 +395,15 @@ const FALL_THRESH=22;
 const FALL_SEVERE=34;
 
 // ── Mushrooms ─────────────────────────────────────────────────────────────────
-const CLOUD_RADIUS   = 30;   // px — area of spore cloud
-const CLOUD_DURATION = 160;  // ticks cloud stays active
-const PUFF_MIN       = 200;  // ticks minimum between puffs
-const PUFF_RANGE     = 220;  // random range added on top
+const CLOUD_RADIUS   = 30;
+const CLOUD_DURATION = 160;
+const PUFF_MIN       = 200;
+const PUFF_RANGE     = 220;
 
 function updateMushrooms(s){
   const pl = s.pl;
   const tolerance = sporeToleranceVal();
   let inCloud = false;
-
   for(const m of s.mushrooms){
     m.bob += 0.03;
     if(m.cloud){
@@ -398,14 +416,11 @@ function updateMushrooms(s){
         m.puffTimer = PUFF_MIN + Math.random()*PUFF_RANGE;
       }
     }
-
-    // Check if player is inside this cloud
     if(m.cloud){
       const dx = pl.x - m.x, dy = pl.y - m.y;
       if(Math.sqrt(dx*dx + dy*dy) < CLOUD_RADIUS + 8) inCloud = true;
     }
   }
-
   if(inCloud){
     pl.sporeExposure++;
     if(pl.sporeExposure >= tolerance){
@@ -413,7 +428,6 @@ function updateMushrooms(s){
       pl.sporeExposure = 0;
     }
   } else {
-    // Drain exposure quickly once out of the cloud
     pl.sporeExposure = Math.max(0, pl.sporeExposure - 3);
   }
 }
@@ -470,8 +484,6 @@ function updateBats(s){
 function update(s){
   s.tick++;
   const pl=s.pl,prevY=pl.y,prevX=pl.x;
-  // FIX 1: Use gravVal() instead of raw upgVal('gravity') to prevent gravity
-  // from inverting at high upgrade levels and launching the player upward forever.
   const grav=gravVal(),ab=airbrakeVal();
 
   if(pl.vy>0) pl.fallVy=Math.max(pl.fallVy,pl.vy);
@@ -485,7 +497,9 @@ function update(s){
   if(pl.x-pl.w/2<WALL){pl.x=WALL+pl.w/2;pl.vx=Math.abs(pl.vx)*bounce;}
   if(pl.x+pl.w/2>W-WALL){pl.x=W-WALL-pl.w/2;pl.vx=-Math.abs(pl.vx)*bounce;}
 
-  if(pl.onG){pl.coyote=upgVal('coyote')|0;pl.airJumpsLeft=maxAirJumps();}
+  // Coyote time is now a fixed 3-frame built-in grace period; no longer an upgrade.
+  // The HOURGLASS RUNE fills the strategic slot vacated by SQUIRE'S GRACE.
+  if(pl.onG){pl.coyote=3;pl.airJumpsLeft=maxAirJumps();}
   else if(pl.coyote>0) pl.coyote--;
   pl.onG=false;
 
@@ -500,11 +514,6 @@ function update(s){
       if(pl.fallVy>=FALL_THRESH){
         const resist=upgVal('fallres');
         let dmg=pl.fallVy>=FALL_SEVERE?2:1;
-        // FIX 3: The original formula had a cliff at integer resist values where
-        // the fractional part became 0, making takeDamage fire ~100% of the time
-        // even though the floor had already reduced the damage. The new approach
-        // separates deterministic integer reduction from probabilistic fractional
-        // reduction cleanly, so protection scales continuously with no cliffs.
         const reducedDmg=Math.max(0,dmg-Math.floor(resist));
         const extraResist=resist-Math.floor(resist);
         const finalDmg=(reducedDmg>0&&Math.random()<extraResist)?reducedDmg-1:reducedDmg;
@@ -601,9 +610,29 @@ window.addEventListener('mousemove',e=>{if(!paused)mv(xy(e));});
 window.addEventListener('mouseup',()=>{if(!paused)up();});
 
 function canLaunch(){const pl=S.pl;return pl.onG||pl.coyote>0||pl.airJumpsLeft>0;}
-function dn(p){if(!S.alive)return;drag={sx:p.x,sy:p.y,cx:p.x,cy:p.y};document.getElementById('hint').style.display='none';}
+
+function dn(p){
+  if(!S.alive)return;
+  drag={sx:p.x,sy:p.y,cx:p.x,cy:p.y};
+  document.getElementById('hint').style.display='none';
+  // ── Activate time slow on drag start ────────────────────────────────────────
+  // Only engage if the player has the upgrade and can actually fire a shot.
+  // This prevents the effect triggering on accidental taps the player can't use.
+  const lvl=upgLevels['timeslow'];
+  if(lvl>0){
+    timeScale=timeSlowScale();
+    timeSlowTimer=timeSlowDuration();
+  }
+}
+
 function mv(p){if(drag)drag={...drag,cx:p.x,cy:p.y};}
+
 function up(){
+  // ── Restore normal speed the instant the player releases / fires ─────────
+  // This makes time-slow feel responsive: snaps back immediately, not gradually.
+  timeScale=1.0;
+  timeSlowTimer=0;
+
   if(!drag||!S.alive){drag=null;return;}
   const dx=drag.cx-drag.sx,dy=drag.cy-drag.sy,dist=Math.sqrt(dx*dx+dy*dy);
   if(dist<8){drag=null;return;}
@@ -619,8 +648,6 @@ function up(){
 const BOUNCE_COLORS=[[255,200,80],[80,200,255],[180,80,255],[80,255,120],[255,140,40]];
 
 function simTrajectory(sx,sy,vx0,vy0,totalSteps){
-  // FIX 1: Use gravVal() here too so the preview arc matches actual physics
-  // and doesn't diverge from reality at high Featherfall upgrade levels.
   const grav=gravVal(),ab=airbrakeVal(),bc=bounceVal(),pf=frictionVal();
   const hw=9,hh=12;
   let tx=sx,ty=sy,tvx=vx0,tvy=vy0;
@@ -639,8 +666,6 @@ function simTrajectory(sx,sy,vx0,vy0,totalSteps){
         const fromLeft=(ptx+hw)<=p.x,fromRight=(ptx-hw)>=pR;
         if(fromTop){
           ty=p.y-hh;tvx*=pf;
-          // Early exit: player has come to rest on a platform — no point
-          // drawing further since the trajectory ends here in practice.
           if(Math.abs(tvx)<0.8&&Math.abs(tvy)<1.5){
             segs[segs.length-1].dots.push({x:tx,y:ty});
             if(segs[segs.length-1].dots.length===0) segs.pop();
@@ -743,52 +768,29 @@ function drawPlatform(p){
 function drawSpikesOnPlat(p) {
   const spikes = getPlatSpikes(p);
   if (!spikes.length) return;
-
   const sy = (p.y - S.cam)|0;
-
   const absScore  = Math.abs(p.y) / 10;
   const density   = Math.min(1, (absScore - SPIKE_START) / (SPIKE_FULL - SPIKE_START));
   const glowAlpha = 0.08 + density * 0.14;
-
   for (const wx of spikes) {
     const x = wx|0;
-
-    // Per-spike glow — only appears beneath each individual spike, not the whole platform
     ctx.fillStyle = `rgba(255,40,0,${glowAlpha})`;
     ctx.fillRect(x - 5, (sy - 10)|0, 10, 10);
-
     ctx.fillStyle = '#1a1218';
-    ctx.fillRect(x,     sy - 10, 2, 2);
-    ctx.fillRect(x - 1, sy -  8, 4, 2);
-    ctx.fillRect(x - 2, sy -  6, 6, 2);
-    ctx.fillRect(x - 3, sy -  4, 8, 2);
-    ctx.fillRect(x - 3, sy -  2, 8, 2);
-
+    ctx.fillRect(x,sy-10,2,2);ctx.fillRect(x-1,sy-8,4,2);ctx.fillRect(x-2,sy-6,6,2);
+    ctx.fillRect(x-3,sy-4,8,2);ctx.fillRect(x-3,sy-2,8,2);
     ctx.fillStyle = '#7a7e88';
-    ctx.fillRect(x,     sy - 9, 2, 2);
-    ctx.fillRect(x - 1, sy - 7, 4, 2);
-    ctx.fillRect(x - 2, sy - 5, 6, 2);
-    ctx.fillRect(x - 3, sy - 3, 8, 2);
-    ctx.fillRect(x - 3, sy - 1, 8, 2);
-
+    ctx.fillRect(x,sy-9,2,2);ctx.fillRect(x-1,sy-7,4,2);ctx.fillRect(x-2,sy-5,6,2);
+    ctx.fillRect(x-3,sy-3,8,2);ctx.fillRect(x-3,sy-1,8,2);
     ctx.fillStyle = '#9aa0aa';
-    ctx.fillRect(x,     sy - 9, 1, 2);
-    ctx.fillRect(x - 1, sy - 7, 2, 2);
-    ctx.fillRect(x - 2, sy - 5, 3, 2);
-
-    ctx.fillStyle = '#d0d8e0';
-    ctx.fillRect(x, sy - 10, 1, 1);
-
+    ctx.fillRect(x,sy-9,1,2);ctx.fillRect(x-1,sy-7,2,2);ctx.fillRect(x-2,sy-5,3,2);
+    ctx.fillStyle = '#d0d8e0';ctx.fillRect(x,sy-10,1,1);
     ctx.fillStyle = '#505560';
-    ctx.fillRect(x + 1, sy - 7, 2, 2);
-    ctx.fillRect(x + 2, sy - 5, 2, 2);
-    ctx.fillRect(x + 3, sy - 3, 2, 4);
-
+    ctx.fillRect(x+1,sy-7,2,2);ctx.fillRect(x+2,sy-5,2,2);ctx.fillRect(x+3,sy-3,2,4);
     const bloodR = (120 + density * 100)|0;
     const bloodA = 0.25 + density * 0.5;
     ctx.fillStyle = `rgba(${bloodR},0,0,${bloodA})`;
-    ctx.fillRect(x - 1, sy - 6, 1, 4);
-    ctx.fillRect(x + 1, sy - 4, 1, 3);
+    ctx.fillRect(x-1,sy-6,1,4);ctx.fillRect(x+1,sy-4,1,3);
   }
 }
 
@@ -797,29 +799,21 @@ function drawMushrooms(){
     const sy = (m.y - S.cam)|0;
     if(sy < -60 || sy > H+20) continue;
     const mx = m.x|0;
-
-    // ── Spore cloud ──────────────────────────────────────────────────────────
     if(m.cloud){
-      const t = m.cloud.timer / m.cloud.maxTimer; // 1→0 as cloud fades
+      const t = m.cloud.timer / m.cloud.maxTimer;
       const pulse = 0.7 + 0.3*Math.sin(S.tick*0.18);
       const outerR = CLOUD_RADIUS + 6*Math.sin(S.tick*0.09);
-
-      // Layered radial gradients give the cloud a lumpy, volumetric feel
       const g1 = ctx.createRadialGradient(mx, sy-8, 0, mx, sy-8, outerR);
       g1.addColorStop(0, `rgba(140,200,60,${0.38*t*pulse})`);
       g1.addColorStop(0.5,`rgba(100,170,30,${0.22*t*pulse})`);
       g1.addColorStop(1,  `rgba(60,120,10,0)`);
       ctx.fillStyle = g1;
       ctx.beginPath(); ctx.arc(mx, sy-8, outerR, 0, Math.PI*2); ctx.fill();
-
-      // Secondary lobe offset slightly for a less-perfect-circle feel
       const g2 = ctx.createRadialGradient(mx+8, sy-14, 0, mx+8, sy-14, outerR*0.65);
       g2.addColorStop(0, `rgba(160,210,80,${0.22*t*pulse})`);
       g2.addColorStop(1,  `rgba(80,150,20,0)`);
       ctx.fillStyle = g2;
       ctx.beginPath(); ctx.arc(mx+8, sy-14, outerR*0.65, 0, Math.PI*2); ctx.fill();
-
-      // Drifting spore particles
       for(let i=0;i<5;i++){
         const angle = (S.tick*0.04 + i*1.26);
         const r = (12 + i*4) * t;
@@ -829,51 +823,24 @@ function drawMushrooms(){
         ctx.fillRect(px2|0, py2|0, 2, 2);
       }
     }
-
-    // ── Warning glow when puff is imminent ───────────────────────────────────
     if(!m.cloud && m.puffTimer < 90){
       const warn = 1 - m.puffTimer/90;
       const wPulse = 0.5 + 0.5*Math.sin(S.tick*0.25);
       ctx.fillStyle = `rgba(120,200,40,${warn*0.18*wPulse})`;
       ctx.beginPath(); ctx.arc(mx, sy-4, 20, 0, Math.PI*2); ctx.fill();
     }
-
-    // ── Pixel-art mushroom body ───────────────────────────────────────────────
-    // Stem
-    ctx.fillStyle = '#c8b89a';
-    ctx.fillRect(mx-3, sy-7, 6, 7);
-    ctx.fillStyle = '#ede0c8';
-    ctx.fillRect(mx-2, sy-6, 2, 5);
-    ctx.fillStyle = '#a89070';
-    ctx.fillRect(mx+1, sy-7, 2, 7);
-
-    // Cap shadow
-    ctx.fillStyle = '#1a1a10';
-    ctx.fillRect(mx-7, sy-14, 14, 8);
-
-    // Cap body — colour shifts slightly when warning
-    const capR = (!m.cloud && m.puffTimer < 90)
-      ? (120 + Math.floor(80*(1-m.puffTimer/90)))|0 : 180;
+    ctx.fillStyle = '#c8b89a';ctx.fillRect(mx-3, sy-7, 6, 7);
+    ctx.fillStyle = '#ede0c8';ctx.fillRect(mx-2, sy-6, 2, 5);
+    ctx.fillStyle = '#a89070';ctx.fillRect(mx+1, sy-7, 2, 7);
+    ctx.fillStyle = '#1a1a10';ctx.fillRect(mx-7, sy-14, 14, 8);
+    const capR = (!m.cloud && m.puffTimer < 90)?(120 + Math.floor(80*(1-m.puffTimer/90)))|0 : 180;
     ctx.fillStyle = `rgb(${capR},48,20)`;
-    ctx.fillRect(mx-6, sy-15, 12, 8);
-    ctx.fillRect(mx-4, sy-17, 8,  2);
-    ctx.fillRect(mx-2, sy-18, 4,  1);
-
-    // Cap highlight (left face)
+    ctx.fillRect(mx-6, sy-15, 12, 8);ctx.fillRect(mx-4, sy-17, 8, 2);ctx.fillRect(mx-2, sy-18, 4, 1);
     ctx.fillStyle = `rgb(${Math.min(255,capR+60)},90,50)`;
-    ctx.fillRect(mx-5, sy-15, 4, 3);
-    ctx.fillRect(mx-3, sy-16, 2, 1);
-
-    // White spots
+    ctx.fillRect(mx-5, sy-15, 4, 3);ctx.fillRect(mx-3, sy-16, 2, 1);
     ctx.fillStyle = '#f0f0e8';
-    ctx.fillRect(mx-4, sy-14, 3, 3);
-    ctx.fillRect(mx+2, sy-13, 2, 2);
-    ctx.fillRect(mx-1, sy-16, 2, 2);
-
-    // Spot shading
-    ctx.fillStyle = '#c8c8b8';
-    ctx.fillRect(mx-3, sy-12, 1, 1);
-    ctx.fillRect(mx+3, sy-12, 1, 1);
+    ctx.fillRect(mx-4, sy-14, 3, 3);ctx.fillRect(mx+2, sy-13, 2, 2);ctx.fillRect(mx-1, sy-16, 2, 2);
+    ctx.fillStyle = '#c8c8b8';ctx.fillRect(mx-3, sy-12, 1, 1);ctx.fillRect(mx+3, sy-12, 1, 1);
   }
 }
 
@@ -913,6 +880,44 @@ function drawHeart(heart){
   px(1,1,2,1); px(5,1,2,1);
   ctx.fillStyle='#ff99aa';
   px(1,2,1,1);
+}
+
+// ── Time-slow visual overlay ───────────────────────────────────────────────────
+// Draws a subtle cyan border + tint when time is actively slowed.
+// Intensity scales with how much the speed is reduced so shallow upgrades
+// feel lighter than deep ones. Drawn after walls, before vignette.
+function drawTimeSlowOverlay(){
+  if(timeScale >= 1.0) return;
+  const intensity = 1.0 - timeScale; // 0 = no slow, 0.70 = max slow (rank 10)
+  const pulse = 0.75 + 0.25*Math.sin(S.tick * 0.22);
+
+  // Subtle blue-cyan screen tint
+  ctx.fillStyle = `rgba(20,60,160,${intensity * 0.10 * pulse})`;
+  ctx.fillRect(0,0,W,H);
+
+  // Animated glowing border
+  const borderAlpha = intensity * 0.55 * pulse;
+  ctx.strokeStyle = `rgba(80,160,255,${borderAlpha})`;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(2,2,W-4,H-4);
+
+  // Inner halo corners for extra polish
+  const cSize = 14;
+  ctx.strokeStyle = `rgba(140,210,255,${intensity * 0.7})`;
+  ctx.lineWidth = 1.5;
+  const corners = [[2,2],[W-2,2],[2,H-2],[W-2,H-2]];
+  const dirs     = [[1,1],[-1,1],[1,-1],[-1,-1]];
+  corners.forEach(([cx,cy],[dx,dy])=>{
+    ctx.beginPath();ctx.moveTo(cx,cy+dy*cSize);ctx.lineTo(cx,cy);ctx.lineTo(cx+dx*cSize,cy);ctx.stroke();
+  },dirs);
+
+  // Small indicator label in top-left
+  const lvl = upgLevels['timeslow'];
+  const slowPctLabel = Math.round((1-timeScale)*100);
+  ctx.fillStyle = `rgba(140,210,255,${intensity*0.85})`;
+  ctx.font = 'bold 8px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`⏳ -${slowPctLabel}% TIME`, WALL+6, 28);
 }
 
 function drawKnight(){
@@ -998,14 +1003,8 @@ function drawSling(){
   ctx.beginPath();ctx.moveTo(drag.sx,drag.sy);ctx.lineTo(drag.cx,drag.cy);ctx.stroke();
   ctx.setLineDash([]);ctx.restore();
 
-  // Divide by power so weak shots get more steps and cover the same visual
-  // distance as strong ones — preview length stays constant at all power levels.
   const totalSteps=Math.floor(upgVal('preview')*3/Math.max(pw,0.15));
   const segs=simTrajectory(ps.x,ps.y,vx0,vy0,totalSteps);
-
-  // Level 0 = initial arc only (1 seg), level N = N rebounds (N+1 segs).
-  // If the step budget runs out before reaching the Nth rebound, the segs
-  // array will simply be shorter — length naturally takes priority over count.
   const maxSegs=upgLevels['preview']+1;
   const drawSegs=segs.slice(0,maxSegs);
 
@@ -1023,7 +1022,6 @@ function drawSling(){
       ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
       ctx.beginPath();ctx.arc(d.x,d.y-camY,r,0,Math.PI*2);ctx.fill();
     });
-    // X marker at each bounce point
     if(seg.bounced&&si<drawSegs.length-1&&seg.dots.length>0){
       const last=seg.dots[seg.dots.length-1];
       const lsy=last.y-camY;
@@ -1069,7 +1067,22 @@ function drawSky(){
 }
 
 function frame(){
-  if(S.alive&&!paused) update(S);
+  if(S.alive&&!paused){
+    // ── Time-slow timer counts in real frames (not game ticks) so the player
+    // experiences the duration in wall-clock time regardless of game speed.
+    if(timeSlowTimer>0){
+      timeSlowTimer--;
+      if(timeSlowTimer<=0) timeScale=1.0;
+    }
+    // Fractional accumulator: lets the game run at any fraction of normal speed.
+    // timeScale=1.0 → one update per frame (normal).
+    // timeScale=0.75 → ~3 updates per 4 frames (25% slower).
+    updateAccum+=timeScale;
+    while(updateAccum>=1.0){
+      update(S);
+      updateAccum-=1.0;
+    }
+  }
   drawSky();
   drawCastleWall();
   for(const bt of S.bats) drawBat(bt);
@@ -1082,6 +1095,8 @@ function frame(){
   drawMushrooms();
   drawKnight();
   drawWalls();
+  // Time-slow overlay sits above world geometry but under vignette/scanlines
+  drawTimeSlowOverlay();
   drawSling();
   if(paused){ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,W,H);}
   const vig=ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
@@ -1103,6 +1118,8 @@ function togglePause(){
   paused=!paused;
   const btn=document.getElementById('pausebtn');
   if(paused){
+    // Reset time slow when pausing so the game never resumes at slowed speed
+    timeScale=1.0;timeSlowTimer=0;
     btn.textContent='▶';saveGame(S);
     document.getElementById('pause-coins').textContent='⚜ '+totalCoins+' gold available';
     renderShop('pause');
@@ -1124,20 +1141,44 @@ function showGO(s){
   document.getElementById('go-stats').textContent='FLOOR: '+s.score+'   ⚜ '+s.session_coins+'   BEST: '+best+' / '+lowest;
   renderShop('go');document.getElementById('go').style.display='block';
 }
+
+// ── renderShop ────────────────────────────────────────────────────────────────
+// Each upgrade row now shows two stacked buttons:
+//   [BUY ⚜ N]  — buy next rank (existing behaviour)
+//   [SELL ⚜ N] — sell current rank for half what was paid (new)
+// The sell button is greyed out if the upgrade is at rank 0.
 function renderShop(which){
   const el=document.getElementById(which==='pause'?'upg-list-pause':'upg-list-go');
   el.innerHTML='';
   UPGRADES.forEach(u=>{
     const cost=upgCost(u.id),lvl=upgLevels[u.id];
     const capped=u.maxLvl!=null&&lvl>=u.maxLvl;
-    const can=!capped&&totalCoins>=cost;
+    const canBuy=!capped&&totalCoins>=cost;
+    const sellPrice=upgSellPrice(u.id);
+    const canSell=lvl>0;
+
     const div=document.createElement('div');div.className='upg';
-    const btnLabel=capped?'MAX':can?'⚜ '+cost:'🔒 '+cost;
-    const rankLabel=capped?`RANK ${lvl} <span style="color:#ffaa44">(MAX)</span>`:`RANK ${lvl}${u.maxLvl!=null?' / '+u.maxLvl:''}`;
-    div.innerHTML=`<div class="upg-info"><div class="upg-name">${u.icon} ${u.name}</div><div class="upg-desc">${u.desc}</div><div class="upg-lvl">${rankLabel}</div></div><button class="upg-btn${can?'':' cant'}" onclick="buyUpg('${u.id}','${which}')">${btnLabel}</button>`;
+    const buyLabel=capped?'MAX':canBuy?'⚜ '+cost:'🔒 '+cost;
+    const rankLabel=capped
+      ?`RANK ${lvl} <span style="color:#ffaa44">(MAX)</span>`
+      :`RANK ${lvl}${u.maxLvl!=null?' / '+u.maxLvl:''}`;
+    const sellLabel=canSell?`SELL +${sellPrice}`:'SELL';
+
+    div.innerHTML=`
+      <div class="upg-info">
+        <div class="upg-name">${u.icon} ${u.name}</div>
+        <div class="upg-desc">${u.desc}</div>
+        <div class="upg-lvl">${rankLabel}</div>
+      </div>
+      <div class="upg-btn-group">
+        <button class="upg-btn${canBuy?'':' cant'}" onclick="buyUpg('${u.id}','${which}')">${buyLabel}</button>
+        <button class="upg-btn sell-btn${canSell?'':' cant'}" onclick="sellUpg('${u.id}','${which}')">${sellLabel}</button>
+      </div>`;
     el.appendChild(div);
   });
 }
+
+// ── buyUpg ────────────────────────────────────────────────────────────────────
 function buyUpg(id,which){
   const u=UPGRADES.find(x=>x.id===id);
   if(u.maxLvl!=null&&upgLevels[id]>=u.maxLvl) return;
@@ -1150,8 +1191,39 @@ function buyUpg(id,which){
   renderShop(which);saveGame(S&&S.alive?S:null);
 }
 
+// ── sellUpg ───────────────────────────────────────────────────────────────────
+// Refunds half of what the player paid for the most recently purchased rank.
+// For example: if rank 3 cost 54⚜, selling rank 3 gives back 27⚜.
+// Live state (HP, air jumps) is clamped down immediately if needed.
+function sellUpg(id,which){
+  if(upgLevels[id]<=0) return;
+  const refund=upgSellPrice(id);
+  upgLevels[id]--;
+  totalCoins+=refund;
+
+  // ── Live-state adjustments ──────────────────────────────────────────────────
+  if(id==='maxhp'&&S&&S.alive){
+    S.pl.maxHp=maxHP();
+    S.pl.hp=Math.min(S.pl.hp,S.pl.maxHp);
+    updateHeartsUI(S.pl);
+  }
+  if(id==='airjumps'&&S&&S.alive){
+    S.pl.airJumpsLeft=Math.min(S.pl.airJumpsLeft,maxAirJumps());
+  }
+  // If the player sold the last rank of timeslow while a slow is active, cancel it
+  if(id==='timeslow'&&upgLevels['timeslow']<=0){
+    timeScale=1.0;timeSlowTimer=0;
+  }
+
+  document.getElementById('coindisp').textContent='⚜ '+totalCoins;
+  if(which==='pause') document.getElementById('pause-coins').textContent='⚜ '+totalCoins+' gold available';
+  renderShop(which);
+  saveGame(S&&S.alive?S:null);
+}
+
 function restart(){
   floats=[];drag=null;paused=false;saveTimer=0;
+  timeScale=1.0;updateAccum=0;timeSlowTimer=0;
   S=mkS(null);
   document.getElementById('go').style.display='none';
   document.getElementById('pausemenu').style.display='none';
@@ -1164,7 +1236,10 @@ function restart(){
 (function boot(){
   const save=loadSave();
   if(save){
-    if(save.upgLevels){upgLevels=save.upgLevels;UPGRADES.forEach(u=>{if(upgLevels[u.id]==null)upgLevels[u.id]=0;});}
+    if(save.upgLevels){
+      upgLevels=save.upgLevels;
+      UPGRADES.forEach(u=>{if(upgLevels[u.id]==null)upgLevels[u.id]=0;});
+    }
     if(save.totalCoins!=null) totalCoins=save.totalCoins;
     if(save.best!=null) best=save.best;
     if(save.lowest!=null) lowest=save.lowest;
