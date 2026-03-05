@@ -332,6 +332,17 @@ const SPIKE_FULL  = 8000;
 const SPIKE_SLOT  = 13;
 const SPIKE_MAX_FILL = 0.88;
 
+
+// Returns deterministic mushroom X on a given platform if a mushroom *would* spawn there, else null.
+// This mirrors tryPlaceMushroom() logic so spikes can avoid overlapping hidden hazards.
+function mushroomXForPlat(p){
+  const absScore = Math.abs(p.y) / 10;
+  if(absScore < MUSH_START) return null;
+  const density = Math.min(1, (absScore - MUSH_START) / (MUSH_FULL - MUSH_START));
+  if(hash2(p.id*53+7, 99) > density * MUSH_MAX_DENSITY) return null;
+  return p.x + 10 + hash2(p.id, 88) * (p.w - 20);
+}
+
 function getPlatSpikes(p) {
   const absScore = Math.abs(p.y) / 10;
   if (absScore < SPIKE_START) return [];
@@ -342,7 +353,16 @@ function getPlatSpikes(p) {
   const spikes = [];
   for (let i = 0; i < slots; i++) {
     if (hash2(p.id * 97 + i, 77) < fillChance) {
-      spikes.push(p.x + 2 + SPIKE_SLOT * 0.5 + i * SPIKE_SLOT);
+      const sx = p.x + 2 + SPIKE_SLOT * 0.5 + i * SPIKE_SLOT;
+
+      // Avoid spawning spikes directly in front of torches or mushrooms (hidden/unfair hazards).
+      const torchX = p.torch ? (p.x + p.w/2) : null;
+      const mushX  = mushroomXForPlat(p);
+
+      const nearTorch = (torchX !== null) && Math.abs(sx - torchX) < 10;
+      const nearMush  = (mushX  !== null) && Math.abs(sx - mushX)  < 10;
+
+      if(!nearTorch && !nearMush) spikes.push(sx);
     }
   }
   return spikes;
@@ -362,7 +382,13 @@ function checkSpikeCollision(s) {
     for (const sx of spikes) {
       if (plR > sx - 4 && plL < sx + 4) {
         takeDamage(s, 1, '🩸 SPIKED!');
-        pl.vy = Math.min(pl.vy, -3.5);
+        // Stronger knockback so the player doesn't sit on the spike and get re-hit.
+        pl.vy = Math.min(pl.vy, -4.2);
+        const dir = (pl.x < sx) ? -1 : 1;
+        pl.spikeDir = dir;
+        pl.spikeKnock = 14;
+        pl.vx = dir * Math.max(Math.abs(pl.vx), 3.2);
+        pl.x += dir * 6;
         return;
       }
     }
@@ -376,7 +402,7 @@ function mkS(savedPos){
   const s={
     pl:{x:sx,y:sy,vx:0,vy:0,w:18,h:24,onG:false,coyote:0,
         hp:shp,maxHp:hp,hurtTimer:0,fallVy:0,damageFlash:0,
-        airJumpsLeft:maxAirJumps(),sporeExposure:0},
+        airJumpsLeft:maxAirJumps(),sporeExposure:0,spikeKnock:0,spikeDir:0},
     cam:sy-H*.38,
     plats:[],coins:[],mushrooms:[],
     collectedCoins:new Set(),
@@ -601,6 +627,15 @@ function update(s){
   pl.x+=pl.vx*ts;pl.y+=pl.vy*ts;
   if(pl.hurtTimer>0) pl.hurtTimer--;
   if(pl.damageFlash>0) pl.damageFlash--;
+
+  // If recently spiked, keep nudging the player sideways so they clear the hitbox.
+  if(pl.spikeKnock>0){
+    pl.spikeKnock--;
+    const d=pl.spikeDir||1;
+    // Ensure some lateral motion even if airbrake is damping
+    pl.vx = d * Math.max(Math.abs(pl.vx), 2.8);
+    pl.x += d * 1.8;
+  }
 
   const bounce=bounceVal();
   if(pl.x-pl.w/2<WALL){pl.x=WALL+pl.w/2;pl.vx=Math.abs(pl.vx)*bounce;}
@@ -892,6 +927,15 @@ function drawTorch(x,y){
   ctx.fillStyle='rgba(255,255,180,0.8)';ctx.beginPath();ctx.ellipse(x,y+fl*0.1,1,3,0,0,Math.PI*2);ctx.fill();
 }
 
+
+function drawTorches(){
+  for(const p of S.plats){
+    if(!p.torch) continue;
+    const sy=(p.y-S.cam)|0;
+    drawTorch(p.x+p.w/2, sy-2);
+  }
+}
+
 function drawWalls(){
   for(let y=0;y<H;y+=12){
     ctx.fillStyle=y%24<12?'#3a3530':'#332f2a';
@@ -925,7 +969,6 @@ function drawPlatform(p){
     ctx.fillRect(p.x|0,sy+6,p.w|0,2);
     for(let i=20;i<p.w;i+=20) ctx.fillRect((p.x+i)|0,sy,2,p.h);
     ctx.fillStyle='rgba(0,0,0,0.25)';ctx.fillRect((p.x+2)|0,(sy+p.h)|0,p.w|0,4);
-    if(p.torch) drawTorch(p.x+p.w/2,sy-2);
     if(p.checkpoint){
       // checkpoint banner
       const bx=(p.x+p.w/2)|0;
@@ -1260,16 +1303,16 @@ function frame(){
       }
       drawSky();
       drawCastleWall();
+      drawWalls();
       for(const bt of S.bats) drawBat(bt);
-      for(const p of S.plats){
-        drawPlatform(p);
-        drawSpikesOnPlat(p);
-      }
+      // Desired draw order: torches, platforms, mushrooms, player, spikes
+      drawTorches();
+      for(const p of S.plats) drawPlatform(p);
       for(const c of S.coins) drawGold(c);
       for(const h of S.hearts) drawHeart(h);
       drawMushrooms();
       drawKnight();
-      drawWalls();
+      for(const p of S.plats) drawSpikesOnPlat(p);
       // Time-slow overlay sits above world geometry but under vignette/scanlines
       drawTimeSlowOverlay();
       drawSling();
