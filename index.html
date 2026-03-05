@@ -14,6 +14,7 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 #best { font-size:12px; color:#aaffaa; }
 #coindisp { font-size:13px; color:#ffcc00; margin-top:2px; }
 #hearts { font-size:18px; margin-top:3px; letter-spacing:3px; }
+#verdisp { font-size:9px; color:#887755; letter-spacing:1px; margin-top:2px; }
 #pausebtn, #fsbtn {
   position:absolute; top:10px;
   background:rgba(0,0,0,0.6); border:2px solid #888;
@@ -27,19 +28,17 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 
 #cpupbtn, #cpdownbtn{
   position:absolute; left:8px;
-  background:rgba(0,0,0,0.60); border:2px solid #888;
-  color:#fff; font-family:monospace; font-size:20px; font-weight:bold;
-  width:40px; height:40px; cursor:pointer;
-  display:none; align-items:center; justify-content:center;
-  z-index:12;
-  border-radius:10px;
-  box-shadow:0 0 10px rgba(0,0,0,0.35);
+  background:rgba(0,0,0,0.6); border:2px solid #888;
+  color:#ffdd00; font-family:monospace; font-size:18px; font-weight:bold;
+  width:36px; height:36px; cursor:pointer;
+  display:none; align-items:center; justify-content:center; z-index:12;
+  text-shadow:2px 2px #000;
 }
 #cpupbtn{ top:42%; }
 #cpdownbtn{ top:52%; }
 #cpupbtn:hover, #cpdownbtn:hover{ border-color:#ffdd00; }
 
-.checkpoint-upg{ background:rgba(40,60,90,0.18); border-bottom:1px solid rgba(120,180,255,0.25); padding:6px 6px 8px; border-radius:6px; }
+.checkpoint-upg{ background:rgba(34,26,14,0.35); border-bottom:1px solid rgba(170,136,51,0.25); padding:6px 6px 8px; }
 
 .panel {
   position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
@@ -82,7 +81,7 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
   <div id="score">FLOOR: 0</div>
   <div id="best">BEST: 0</div>
   <div id="coindisp">⚜ 0</div>
-  <div id="verdisp" style="font-size:9px;color:#887755;letter-spacing:1px;margin-top:2px;">v0.22-checkpoints</div>
+  <div id="verdisp">v0.22-checkpoints</div>
 <div id="hearts">❤️❤️❤️</div>
 </div>
 <button id="fsbtn" onclick="toggleFS()" title="Fullscreen">⛶</button>
