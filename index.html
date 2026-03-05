@@ -159,6 +159,10 @@ const MUSH_START = 150;
 const MUSH_FULL  = 4500;
 const MUSH_MAX_DENSITY = 0.38;
 
+// ── P4: Outside chunk constants ───────────────────────────────────────────────
+const CHUNK_W = 600;   // world units per chunk horizontally
+const CHUNK_H = 500;   // world units per chunk vertically
+
 // ── Persistence ───────────────────────────────────────────────────────────────
 function saveGame(s){
   try{
@@ -299,6 +303,7 @@ function mkS(savedPos){
     plats:[],coins:[],mushrooms:[],
     collectedCoins:new Set(),
     collectedHearts:new Set(),
+    generatedChunks:new Set(),   // P4: tracks which outside chunks have been populated
     score:Math.floor(-sy/10),session_coins:0,
     alive:true,tick:0,
     bats:[],
@@ -325,14 +330,37 @@ function mkBat(wy, plY, homeX){
 
 function platId(wy){return Math.round(wy/10);}
 
+// ── Generation routing ────────────────────────────────────────────────────────
 function gen(s){
+  if(s.worldMode==='tower'||s.worldMode==='entering'){
+    genTowerContent(s);
+  } else {
+    genOutside(s);
+  }
+  // Bats always maintained regardless of mode
+  const idle=s.bats.filter(bt=>bt.state==='idle').length;
+  let add=8-idle;
+  while(add-->0){
+    const batY=s.cam.y+(Math.random()-.5)*H*2;
+    let batHomeX;
+    if(s.worldMode==='tower'||s.worldMode==='entering'){
+      const tw=s.activeTower;
+      batHomeX=tw.worldX+tw.wallThickness+10+Math.random()*(tw.width-tw.wallThickness*2-20);
+    } else {
+      batHomeX=s.cam.x+W*0.1+Math.random()*W*0.8;
+    }
+    s.bats.push(mkBat(batY,s.pl.y,batHomeX));
+  }
+}
+
+// Tower interior: vertical band-based generation (original logic)
+function genTowerContent(s){
   const margin=H*0.75;
-  // PHASE 1: use s.cam.y
   const top=s.cam.y-margin, bot=s.cam.y+H+margin;
 
   let mn=Infinity,mx=-Infinity;
-  for(const p of s.plats){if(p.y<mn)mn=p.y;if(p.y>mx)mx=p.y;}
-  if(!s.plats.length){mn=s.pl.y;mx=s.pl.y;}
+  for(const p of s.plats){if(!p.outside&&p.y<mn)mn=p.y;if(!p.outside&&p.y>mx)mx=p.y;}
+  if(mn===Infinity){mn=s.pl.y;mx=s.pl.y;}
   let y=mx; while(y<bot){y+=65+Math.random()*85;if(y<bot)addP(s,y);}
   y=mn;     while(y>top){y-=65+Math.random()*85;if(y>top)addP(s,y);}
 
@@ -343,22 +371,66 @@ function gen(s){
   for(let b=cb0;b<=cb1;b++) tryPlaceCoin(s,b*COIN_BAND,b);
   const hb0=Math.floor(ctop/HEART_BAND), hb1=Math.ceil(cbot/HEART_BAND);
   for(let b=hb0;b<=hb1;b++) tryPlaceHeart(s,b*HEART_BAND,b);
+}
 
-  const idle=s.bats.filter(bt=>bt.state==='idle').length;
-  let add=8-idle;
-  // P3/P5: place new bats at a world-X that makes sense for the current mode
-  while(add-->0){
-    const batY = s.cam.y + (Math.random()-.5)*H*2;
-    let batHomeX;
-    if(s.worldMode==='tower'){
-      const tw=s.activeTower;
-      batHomeX = tw.worldX + tw.wallThickness + 10
-               + Math.random()*(tw.width - tw.wallThickness*2 - 20);
-    } else {
-      // Outside: scatter around current camera X
-      batHomeX = s.cam.x + W*0.1 + Math.random()*W*0.8;
+// Outside: 2-D chunk-based generation
+function genOutside(s){
+  const cx0=Math.floor((s.cam.x-W*0.5)/CHUNK_W);
+  const cx1=Math.ceil( (s.cam.x+W*1.5)/CHUNK_W);
+  const cy0=Math.floor((s.cam.y-H*0.5)/CHUNK_H);
+  const cy1=Math.ceil( (s.cam.y+H*1.5)/CHUNK_H);
+  for(let cy=cy0;cy<=cy1;cy++)
+    for(let cx=cx0;cx<=cx1;cx++)
+      genChunk(s,cx,cy);
+}
+
+function genChunk(s,cx,cy){
+  const key=cx+','+cy;
+  if(s.generatedChunks.has(key)) return;
+  s.generatedChunks.add(key);
+
+  const x0=cx*CHUNK_W, y0=cy*CHUNK_H;
+
+  // 3–5 floating platforms per chunk
+  const platCount=3+Math.floor(hash2(cx*37+cy,110)*3);
+  for(let i=0;i<platCount;i++){
+    const pw=55+hash2(cx*17+cy*31+i,111)*80;
+    const wx=x0+20+hash2(cx*17+cy*31+i,112)*(CHUNK_W-pw-40);
+    const wy=y0+60+hash2(cx*17+cy*31+i,113)*(CHUNK_H-120);
+    // Use a large ID that won't collide with tower platIds (which are ~wy/10)
+    const pid=(cx+500)*100000+(cy+500)*1000+i;
+    if(s.plats.some(p=>p.id===pid)) continue;
+    const icy=hash2(cx*17+cy*31+i,114)<0.14;
+    const torch=!icy&&hash2(cx*17+cy*31+i,115)<0.22;
+    s.plats.push({x:wx,y:wy,w:pw,h:14,icy,torch,id:pid,outside:true});
+    tryPlaceMushroom(s,{x:wx,y:wy,w:pw,id:pid});
+
+    // Drop a coin above this platform ~60% of the time
+    if(hash2(cx*17+cy*31+i,116)<0.6){
+      const band=pid; // reuse pid as band key — unique
+      if(!s.collectedCoins.has(band)&&!s.coins.some(c=>c.id===band)){
+        const val=upgVal('coinval')|0;
+        s.coins.push({x:wx+pw*0.3+hash2(pid,117)*pw*0.4,
+          y:wy-28-hash2(pid,118)*20,
+          collected:false,bob:hash2(pid,119)*Math.PI*2,
+          id:band,outside:true});
+      }
     }
-    s.bats.push(mkBat(batY, s.pl.y, batHomeX));
+  }
+
+  // P4: ~18% chance of a tower entrance per chunk
+  // Only spawn to the right of the initial tower to give the player direction
+  if(hash2(cx*53+cy,130)<0.18){
+    const tid=(cx+500)*997+(cy+500)*1009; // deterministic, non-zero
+    if(!s.towers.some(t=>t.id===tid)){
+      // Place tower so its left wall is at the right edge of this chunk
+      const tWorldX=x0+CHUNK_W*0.4+hash2(cx*53+cy,131)*CHUNK_W*0.2;
+      const tWidth=280+hash2(cx*53+cy,132)*100;
+      // Entry Y = roughly mid-chunk height so breaks appear in a reachable area
+      const tEntryY=y0+CHUNK_H*0.5+hash2(cx*53+cy,133)*100;
+      const tw=mkTower(tWorldX,tWidth,tEntryY,tid);
+      s.towers.push(tw);
+    }
   }
 }
 
@@ -427,22 +499,49 @@ function addP(s,wy){
 }
 
 function cull(s){
-  const margin=H*0.75;
+  const margin=H*0.85;
   const t=s.cam.y-margin, b=s.cam.y+H+margin;
-  s.plats=s.plats.filter(p=>p.y>t&&p.y<b);
-  s.coins=s.coins.filter(c=>!c.collected&&c.y>t&&c.y<b);
-  s.hearts=s.hearts.filter(h=>!h.collected&&h.y>t&&h.y<b);
-  // P5: in outside mode also cull bats that have drifted far off-screen horizontally
-  const xMargin = W * 2;
-  s.bats=s.bats.filter(bt=>{
-    if(bt.wy<=t-H*1.5||bt.wy>=b+H*1.5) return false;
-    if(s.worldMode==='outside'||s.worldMode==='exiting'){
-      const bsx=bt.x-s.cam.x;
-      if(bsx<-xMargin||bsx>W+xMargin) return false;
-    }
+  const outside=s.worldMode==='outside'||s.worldMode==='exiting';
+  const xM=W*1.8, xl=s.cam.x-xM, xr=s.cam.x+W+xM;
+
+  // When in tower mode, skip platforms flagged as outside (they could cause ghost collisions)
+  const inTowerMode=s.worldMode==='tower'||s.worldMode==='entering';
+  s.plats=s.plats.filter(p=>{
+    if(inTowerMode&&p.outside) return false;
+    if(p.y<=t||p.y>=b) return false;
+    if(outside&&(p.x+p.w<xl||p.x>xr)) return false;
     return true;
   });
-  s.mushrooms=s.mushrooms.filter(m=>m.y>t&&m.y<b);
+  s.coins=s.coins.filter(c=>{
+    if(c.collected) return false;
+    if(c.y<=t||c.y>=b) return false;
+    if(outside&&(c.x<xl||c.x>xr)) return false;
+    return true;
+  });
+  s.hearts=s.hearts.filter(h=>{
+    if(h.collected) return false;
+    if(h.y<=t||h.y>=b) return false;
+    if(outside&&(h.x<xl||h.x>xr)) return false;
+    return true;
+  });
+  // Bats: Y + optional X cull
+  const xMargin=W*2;
+  s.bats=s.bats.filter(bt=>{
+    if(bt.wy<=t-H*1.5||bt.wy>=b+H*1.5) return false;
+    if(outside){const bsx=bt.x-s.cam.x;if(bsx<-xMargin||bsx>W+xMargin) return false;}
+    return true;
+  });
+  s.mushrooms=s.mushrooms.filter(m=>{
+    if(inTowerMode&&m.outside) return false;
+    return m.y>t&&m.y<b;
+  });
+  // P4: cull towers that are very far from the camera
+  const towerXMargin=W*4;
+  s.towers=s.towers.filter(tw=>{
+    if(tw===s.activeTower) return true; // always keep active tower
+    const tsx=tw.worldX-s.cam.x;
+    return tsx>-towerXMargin&&tsx<W+towerXMargin;
+  });
 }
 
 function addFloat(x,sy,text,color){floats.push({x,y:sy,vy:-1.4,life:55,text,color:color||'#ffdd00'});}
@@ -602,7 +701,43 @@ function update(s){
       }
     }
   }
-  // (entering mode: re-entry wall clamping handled in Phase 4)
+  // (entering mode: re-entry wall clamping handled here)
+  // P4: outside — check collision with all towers and detect entry through breaks
+  if(s.worldMode==='outside'){
+    for(const tw of s.towers){
+      const leftOuter  = tw.worldX;
+      const rightOuter = tw.worldX + tw.width;
+      const leftInner  = tw.worldX + tw.wallThickness;
+      const rightInner = tw.worldX + tw.width - tw.wallThickness;
+
+      // Left wall (player approaching from outside-left)
+      if(pl.x-pl.w/2 < leftInner && pl.x+pl.w/2 > leftOuter && pl.x < leftInner){
+        if(isInBreak(tw,'left',pl.y)){
+          // Walking into a break from outside — begin entry transition
+          s.activeTower=tw; s.worldMode='entering'; s.camExitT=0;
+          // Clear outside objects so tower interior generates cleanly
+          s.plats=s.plats.filter(p=>!p.outside);
+          s.coins=s.coins.filter(c=>!c.outside);
+          s.mushrooms=s.mushrooms.filter(m=>!m.outside);
+          break;
+        } else {
+          pl.x=leftOuter-pl.w/2; pl.vx=-Math.abs(pl.vx)*bounce;
+        }
+      }
+      // Right wall (player approaching from outside-right)
+      if(pl.x+pl.w/2 > rightInner && pl.x-pl.w/2 < rightOuter && pl.x > rightInner){
+        if(isInBreak(tw,'right',pl.y)){
+          s.activeTower=tw; s.worldMode='entering'; s.camExitT=0;
+          s.plats=s.plats.filter(p=>!p.outside);
+          s.coins=s.coins.filter(c=>!c.outside);
+          s.mushrooms=s.mushrooms.filter(m=>!m.outside);
+          break;
+        } else {
+          pl.x=rightOuter+pl.w/2; pl.vx=Math.abs(pl.vx)*bounce;
+        }
+      }
+    }
+  }
 
   if(pl.onG){
     pl.coyote=upgVal('coyote')|0;
@@ -691,10 +826,18 @@ function update(s){
     s.cam.x = s.activeTower.worldX;
   } else if(s.worldMode === 'exiting'){
     s.camExitT++;
-    s.cam.x += (pl.x - W/2 - s.cam.x) * 0.12;  // faster lerp during transition
+    s.cam.x += (pl.x - W/2 - s.cam.x) * 0.12;
     if(s.camExitT > 40) s.worldMode = 'outside';
   } else if(s.worldMode === 'outside'){
     s.cam.x += (pl.x - W/2 - s.cam.x) * 0.07;
+  } else if(s.worldMode === 'entering'){
+    // P4: lerp cam.x back to the tower's locked position
+    s.camExitT++;
+    s.cam.x += (s.activeTower.worldX - s.cam.x) * 0.12;
+    if(s.camExitT > 40){
+      s.worldMode='tower';
+      s.cam.x=s.activeTower.worldX; // snap exact at end of lerp
+    }
   }
 
   s.score=Math.floor(-pl.y/10);
@@ -705,15 +848,18 @@ function update(s){
 
   if(++saveTimer>300){saveTimer=0;saveGame(s);}
 
-  const outsideTag = (s.worldMode==='outside'||s.worldMode==='exiting') ? '⚔ OUTSIDE · ' : '';
-  document.getElementById('score').textContent=outsideTag+'FLOOR: '+s.score;
+  const outsideTag=(s.worldMode==='outside'||s.worldMode==='exiting'||s.worldMode==='entering')?'⚔ OUTSIDE · ':'';
+  const scoreEl=document.getElementById('score');
+  scoreEl.textContent=outsideTag+'FLOOR: '+s.score;
+  // P7: cyan score text outside, gold inside
+  scoreEl.style.color=(outsideTag)?'#44ddff':'#ffdd00';
+  scoreEl.style.textShadow=(outsideTag)?'0 0 8px rgba(0,180,255,0.6),2px 2px #000':'2px 2px #000';
   document.getElementById('best').textContent='BEST: '+best+' / '+lowest;
   document.getElementById('coindisp').textContent='⚜ '+totalCoins;
   updateHeartsUI(pl);
 
   // P3: fall kill — outside uses distance-from-last-ground; tower uses screen-bottom
-  if(s.worldMode==='outside'||s.worldMode==='exiting'){
-    // No floor outside — if player falls 3000 units below where they last stood, die
+  if(s.worldMode==='outside'||s.worldMode==='exiting'||s.worldMode==='entering'){
     if(pl.y > pl.lastGroundY + 3000){ pl.hp=0; killPlayer(s); }
   } else {
     if(pl.y - s.cam.y > H+220){ pl.hp=0; killPlayer(s); }
@@ -852,23 +998,27 @@ function drawTorch(x,y){
   ctx.fillStyle='rgba(255,255,180,0.8)';ctx.beginPath();ctx.ellipse(x,y+fl*0.1,1,3,0,0,Math.PI*2);ctx.fill();
 }
 
-// PHASE 2: replaces drawWalls(). Draws the tower walls with gaps at breaks.
-function drawTowerWalls(){
-  const tw  = S.activeTower;
-  const camY = S.cam.y;
-  const camX = S.cam.x;
+// P4: Draws one tower's walls. When exterior=true (viewing from outside),
+// also fills the interior gap with a dark silhouette and brightens the break bleed.
+function drawOneTowerWalls(tw, camX, camY, exterior){
+  const scrLeft  = (tw.worldX - camX)|0;
+  const scrRight = (tw.worldX + tw.width - camX)|0;
+
+  // P4: when outside, fill interior of tower as a dark silhouette
+  if(exterior){
+    ctx.fillStyle='#1a1612';
+    ctx.fillRect(scrLeft, 0, scrRight - scrLeft, H);
+  }
 
   ['left','right'].forEach(side => {
-    // Screen X of this wall's left edge
     const sx = side === 'left'
-      ? (tw.worldX - camX)|0
+      ? scrLeft
       : (tw.worldX + tw.width - tw.wallThickness - camX)|0;
 
     const sideBreaks = tw.breaks
       .filter(b => b.side === side)
       .sort((a, b) => a.yTop - b.yTop);
 
-    // Visible world-Y range (with a small overdraw margin)
     const visTop = camY - 12;
     const visBot = camY + H + 12;
 
@@ -881,12 +1031,9 @@ function drawTowerWalls(){
     }
     if (cur < visBot) solidSegs.push({ wy1: cur, wy2: visBot });
 
-    // Draw each solid segment
     for (const seg of solidSegs) {
       const sy1 = (seg.wy1 - camY)|0;
       const sy2 = (seg.wy2 - camY)|0;
-
-      // Align brick rows to world-Y so pattern doesn't shift with camera
       const rowStart = Math.floor(sy1 / 12) * 12;
       for (let y = rowStart; y < sy2; y += 12) {
         const clipTop = Math.max(y, sy1);
@@ -895,8 +1042,6 @@ function drawTowerWalls(){
         ctx.fillStyle = y % 24 < 12 ? '#3a3530' : '#332f2a';
         ctx.fillRect(sx, clipTop, tw.wallThickness, clipH);
       }
-
-      // Inner edge highlight
       ctx.fillStyle = '#555';
       if (side === 'left') {
         ctx.fillRect(sx + tw.wallThickness - 2, sy1, 2, sy2 - sy1);
@@ -905,20 +1050,17 @@ function drawTowerWalls(){
       }
     }
 
-    // Draw decorative edges and light bleed at each break opening
     for (const brk of sideBreaks) {
       const bsy1 = (brk.yTop    - camY)|0;
       const bsy2 = (brk.yBottom - camY)|0;
       if (bsy2 < -30 || bsy1 > H + 30) continue;
 
-      // Shadow cap at top of opening
       if (bsy1 > -15 && bsy1 < H + 15) {
         ctx.fillStyle = '#111008';
         ctx.fillRect(sx, bsy1 - 4, tw.wallThickness, 5);
         ctx.fillStyle = '#666';
         ctx.fillRect(sx + 2, bsy1 - 2, tw.wallThickness - 4, 2);
       }
-      // Shadow cap at bottom of opening
       if (bsy2 > -15 && bsy2 < H + 15) {
         ctx.fillStyle = '#111008';
         ctx.fillRect(sx, bsy2, tw.wallThickness, 5);
@@ -926,21 +1068,40 @@ function drawTowerWalls(){
         ctx.fillRect(sx + 2, bsy2 + 2, tw.wallThickness - 4, 2);
       }
 
-      // Ambient light bleed through the gap (outside is brighter)
       const clipY1 = Math.max(0, bsy1);
       const clipY2 = Math.min(H, bsy2);
       if (clipY2 > clipY1) {
-        // Gradient from inner face outward
+        // P4: exterior breaks glow outward (daylight leaking out), interior bleed inward
         const innerX = side === 'left' ? sx + tw.wallThickness : sx;
         const outerX = side === 'left' ? sx : sx + tw.wallThickness;
-        const grd = ctx.createLinearGradient(innerX, 0, outerX, 0);
-        grd.addColorStop(0, 'rgba(60,130,220,0.13)');
+        const grd = ctx.createLinearGradient(exterior ? outerX : innerX, 0, exterior ? innerX : outerX, 0);
+        const alpha = exterior ? 0.22 : 0.13;
+        grd.addColorStop(0, `rgba(60,130,220,${alpha})`);
         grd.addColorStop(1, 'rgba(60,130,220,0)');
         ctx.fillStyle = grd;
         ctx.fillRect(sx, clipY1, tw.wallThickness, clipY2 - clipY1);
       }
     }
   });
+}
+
+// P4: Routes to draw all visible towers (exterior) or active tower (interior)
+function drawTowerWalls(){
+  const camY = S.cam.y, camX = S.cam.x;
+  const exterior = S.worldMode==='outside';
+
+  if(exterior){
+    // Draw all towers in world that are on screen
+    for(const tw of S.towers){
+      const scrLeft  = tw.worldX - camX;
+      const scrRight = tw.worldX + tw.width - camX;
+      if(scrRight < -40 || scrLeft > W + 40) continue;
+      drawOneTowerWalls(tw, camX, camY, true);
+    }
+  } else {
+    // Draw active tower interior only
+    drawOneTowerWalls(S.activeTower, camX, camY, false);
+  }
 }
 
 function drawPlatform(p){
@@ -1269,11 +1430,107 @@ function drawSky(){
   }
 }
 
+// P6: Red fall-danger overlay when outside and plummeting
+function drawFallWarning(){
+  const pl=S.pl;
+  const outside=S.worldMode==='outside'||S.worldMode==='exiting'||S.worldMode==='entering';
+  if(!outside) return;
+  const fallDist = pl.y - pl.lastGroundY;
+  if(fallDist < 1000) return;
+  const danger = Math.min(1, (fallDist - 1000) / 2000); // 0→1 over 1000→3000 units
+
+  // Red bottom-to-mid gradient
+  const grad = ctx.createLinearGradient(0, H * 0.35, 0, H);
+  grad.addColorStop(0, 'rgba(180,0,0,0)');
+  grad.addColorStop(1, `rgba(180,0,0,${danger * 0.55})`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Pulsing edge vignette when very close to death
+  if(danger > 0.55){
+    const pulse = 0.5 + 0.5 * Math.sin(S.tick * 0.18);
+    const edgeAlpha = (danger - 0.55) / 0.45 * 0.5 * pulse;
+    ctx.fillStyle = `rgba(220,0,0,${edgeAlpha})`;
+    ctx.fillRect(0, 0, 8, H);
+    ctx.fillRect(W-8, 0, 8, H);
+    ctx.fillRect(0, H-8, W, 8);
+  }
+
+  // Warning text
+  if(danger > 0.35){
+    const pulse = 0.5 + 0.5 * Math.sin(S.tick * 0.2);
+    const alpha = (0.55 + 0.45 * pulse) * danger;
+    ctx.fillStyle = `rgba(255,70,40,${alpha})`;
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚠ NO GROUND BELOW ⚠', W/2, H - 16);
+    ctx.textAlign = 'left';
+  }
+}
+
+// P7: Outside HUD — compass arrow to nearest tower + break-opening indicators
+function drawOutsideHUD(){
+  if(S.worldMode==='tower') return;
+
+  // Compass: find nearest tower by X distance and draw a directional arrow
+  let nearest=null, nearestDx=Infinity;
+  for(const tw of S.towers){
+    const twCx = tw.worldX + tw.width/2;
+    const dx = twCx - S.pl.x;
+    if(Math.abs(dx) < Math.abs(nearestDx)){ nearestDx=dx; nearest=tw; }
+  }
+
+  if(nearest){
+    const scrTwL = nearest.worldX - S.cam.x;
+    const scrTwR = nearest.worldX + nearest.width - S.cam.x;
+    const towerOnScreen = scrTwR > 0 && scrTwL < W;
+
+    if(!towerOnScreen){
+      // Off-screen — draw edge arrow
+      const dir = nearestDx > 0 ? 1 : -1;
+      const ax = dir > 0 ? W - 22 : 22;
+      const ay = H/2;
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = '#ffcc44';
+      ctx.font = 'bold 18px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(dir > 0 ? '▶' : '◀', ax, ay + 6);
+      ctx.font = '7px monospace';
+      ctx.fillStyle = '#ffdd88';
+      ctx.fillText('TOWER', ax, ay + 18);
+      ctx.globalAlpha = 1;
+      ctx.textAlign = 'left';
+    } else {
+      // Tower is on screen — show entry indicator on each visible break
+      for(const tw of S.towers){
+        const scrL = tw.worldX - S.cam.x;
+        const scrR = tw.worldX + tw.width - S.cam.x;
+        if(scrR < -20 || scrL > W + 20) continue;
+        for(const brk of tw.breaks){
+          const brkMidY = (brk.yTop + brk.yBottom) / 2 - S.cam.y;
+          if(brkMidY < -20 || brkMidY > H + 20) continue;
+          const pulse = 0.5 + 0.5 * Math.sin(S.tick * 0.12 + brk.yTop * 0.01);
+          ctx.globalAlpha = 0.5 + 0.5 * pulse;
+          ctx.fillStyle = '#88ddff';
+          ctx.font = '13px monospace';
+          ctx.textAlign = 'center';
+          const bx = brk.side === 'left'
+            ? (tw.worldX + tw.wallThickness - S.cam.x)|0
+            : (tw.worldX + tw.width - tw.wallThickness - S.cam.x)|0;
+          ctx.fillText(brk.side === 'left' ? '▷' : '◁', bx, brkMidY + 5);
+          ctx.globalAlpha = 1;
+        }
+      }
+      ctx.textAlign = 'left';
+    }
+  }
+}
+
 function frame(){
   if(S.alive&&!paused) update(S);
   drawSky();
-  // P3: castle-wall brick background only makes sense inside a tower
-  if(S.worldMode==='tower'||S.worldMode==='exiting') drawCastleWall();
+  // P4: castle-wall brick background for all tower-interior states
+  if(S.worldMode==='tower'||S.worldMode==='exiting'||S.worldMode==='entering') drawCastleWall();
   for(const bt of S.bats) drawBat(bt);
   for(const p of S.plats){
     drawPlatform(p);
@@ -1286,11 +1543,15 @@ function frame(){
   // PHASE 2: drawTowerWalls() replaces drawWalls() — handles breaks
   drawTowerWalls();
   drawSling();
+  // P6: fall danger overlay (drawn before vignette so vignette covers edges)
+  drawFallWarning();
   if(paused){ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,W,H);}
   const vig=ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
   vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,0.45)');
   ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
   ctx.fillStyle='rgba(0,0,0,0.04)';for(let i=0;i<H;i+=2)ctx.fillRect(0,i,W,1);
+  // P7: outside HUD compass and break indicators
+  drawOutsideHUD();
   if(S.pl.onG&&!drag&&!paused&&S.tick%60<38){
     // PHASE 1: S.cam.y
     const py=S.pl.y-S.cam.y+S.pl.h/2+22;
