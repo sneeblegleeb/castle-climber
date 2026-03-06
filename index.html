@@ -348,7 +348,7 @@ function checkSpikeCollision(s) {
   const plB  = pl.y + pl.h / 2;
   const plL  = pl.x - pl.w / 2 + 3;
   const plR  = pl.x + pl.w / 2 - 3;
-  const SPIKE_H = 9;
+  const SPIKE_H = 20;
   for (const p of s.plats) {
     if (plB < p.y - SPIKE_H - 1 || plB > p.y + 3) continue;
     if (plR < p.x || plL > p.x + p.w) continue;
@@ -1080,141 +1080,208 @@ function drawSpikesOnPlat(p) {
   const absScore = Math.abs(p.y) / 10;
   const density  = Math.min(1, (absScore - SPIKE_START) / (SPIKE_FULL - SPIKE_START));
 
-  // ── palette ────────────────────────────────────────────────────────────────
-  const C_STEM_DARK  = '#140c04';
-  const C_STEM_MID   = '#251508';
-  const C_STEM_LITE  = '#3a2010';
-  const C_THORN      = '#4d2c0c';
-  const C_THORN_TIP  = '#6a3c12';
-  const C_LEAF_DARK  = '#0c1a05';
-  const C_LEAF_MID   = '#182e08';
-  const C_LEAF_LITE  = '#234010';
-  const C_BERRY_DARK = '#5a0808';
-  const C_BERRY_MID  = '#880a0a';
-  const C_BLOOD      = `rgba(${(110+density*110)|0},0,0,${0.5+density*0.4})`;
+  // ── Palette — bright enough to read against dark castle stone ─────────────
+  const C_STEM_DARK  = '#2a1506';
+  const C_STEM_MID   = '#4a2a0a';
+  const C_STEM_LITE  = '#6b3e12';
+  const C_THORN      = '#7a4010';
+  const C_THORN_TIP  = '#c07030';   // pale orange-tan tip, clearly visible
+  const C_LEAF_DARK  = '#1a3a08';
+  const C_LEAF_MID   = '#2e6010';
+  const C_LEAF_LITE  = '#4a9020';   // bright leaf highlight
+  const C_LEAF_EDGE  = '#60b828';   // lightest leaf edge
+  const C_BERRY_DARK = '#6a0808';
+  const C_BERRY_MID  = '#b01010';
+  const C_BERRY_LITE = '#d83030';
+  const bloodR = (130 + density * 120)|0;
+  const C_BLOOD = `rgba(${bloodR},8,8,${0.7 + density * 0.25})`;
 
   for (const wx of spikes) {
     const x = wx|0;
-    // Deterministic seeds from spike world position (wx is fixed per platform/slot)
     const seed = wx * 7 + p.id * 13;
-    const h0 = hash2(seed,  0);   // main cane height  0..1
-    const h1 = hash2(seed,  1);   // side cane height  0..1
-    const h2 = hash2(seed,  2);   // lean direction    0..1
-    const h3 = hash2(seed,  3);   // leaf side         0..1
-    const h4 = hash2(seed,  4);   // extra twig        0..1
-    const h5 = hash2(seed,  5);   // berry presence    0..1
-    const h6 = hash2(seed,  6);   // tangle offset     0..1
-    const h7 = hash2(seed,  7);   // second leaf       0..1
+    const h0 = hash2(seed, 0);  // main cane height
+    const h1 = hash2(seed, 1);  // side cane height
+    const h2 = hash2(seed, 2);  // lean direction
+    const h3 = hash2(seed, 3);  // leaf side
+    const h4 = hash2(seed, 4);  // extra twig
+    const h5 = hash2(seed, 5);  // berry presence
+    const h6 = hash2(seed, 6);  // tangle offset
+    const h7 = hash2(seed, 7);  // second cane offset
+    const h8 = hash2(seed, 8);  // third cane
 
-    const caneH   = (6 + h0 * 4)|0;          // 6–10 px tall main cane
-    const sideH   = (3 + h1 * 4)|0;          // 3–7 px side cane
-    const lean    = h2 < 0.45 ? -1 : h2 > 0.55 ? 1 : 0; // lean left / none / right
-    const tangleX = ((h6 - 0.5) * 4)|0;       // -2..+2 offset for base tangle
+    // Cane heights — 16–26px tall so they're impossible to miss
+    const caneH = (16 + h0 * 10)|0;
+    const sideH = (10 + h1 *  9)|0;
+    const caneH2= ( 8 + h8 *  8)|0;
+    const lean  = h2 < 0.38 ? -1 : h2 > 0.62 ? 1 : 0;
+    const tangleX = ((h6 - 0.5) * 6)|0;
 
-    // ── Base tangle — crossing woody sticks at platform surface ───────────────
+    // ── Base tangle — wide woody mat covering the slot ────────────────────────
+    // Dark shadow under the whole clump
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(x - 8, sy - 3, 18, 4);
+
     ctx.fillStyle = C_STEM_DARK;
-    ctx.fillRect(x-6+tangleX, sy-2, 13, 2);   // main horizontal
-    ctx.fillRect(x-5,         sy-3, 2,  3);   // left upright stub
-    ctx.fillRect(x+3,         sy-3, 2,  3);   // right upright stub
+    ctx.fillRect(x - 8 + tangleX, sy - 3, 18, 3);   // wide base log
+    ctx.fillRect(x - 7,           sy - 5, 3,  4);   // left stub
+    ctx.fillRect(x + 3,           sy - 6, 3,  5);   // right stub
+    ctx.fillRect(x - 2,           sy - 5, 2,  3);   // centre stub
     ctx.fillStyle = C_STEM_MID;
-    ctx.fillRect(x-4+tangleX, sy-2, 9,  1);
-    // Cross-stick (diagonal feel via two offset rects)
+    ctx.fillRect(x - 6 + tangleX, sy - 3, 14, 2);
+    ctx.fillRect(x - 6 + tangleX, sy - 2, 14, 1);
+    // Cross-brace diagonals (faked with offset rects)
     ctx.fillStyle = C_STEM_DARK;
-    ctx.fillRect(x-3, sy-3, 2, 2);
-    ctx.fillRect(x+1, sy-4, 2, 2);
+    ctx.fillRect(x - 5, sy - 5, 3, 3);
+    ctx.fillRect(x + 1, sy - 6, 3, 3);
+    ctx.fillRect(x - 1, sy - 4, 3, 2);
     ctx.fillStyle = C_STEM_LITE;
-    ctx.fillRect(x-2, sy-3, 1, 1);
+    ctx.fillRect(x - 4, sy - 4, 2, 1);
+    ctx.fillRect(x + 2, sy - 5, 2, 1);
+
+    // ── Helper: draw one cane with barbed thorns ──────────────────────────────
+    function drawCane(cx0, height, clean){
+      let cx = cx0;
+      const leanDir = clean ? 0 : lean;
+      for(let i = 0; i < height; i++){
+        const ry = sy - 3 - i;
+        if(leanDir !== 0 && i === (height * 0.55)|0) cx += leanDir;
+        // Stem — 3px wide for main cane, 2px for others
+        ctx.fillStyle = C_STEM_DARK;
+        ctx.fillRect(cx - 1, ry, 3, 1);
+        ctx.fillStyle = C_STEM_MID;
+        ctx.fillRect(cx,     ry, 2, 1);
+        ctx.fillStyle = C_STEM_LITE;
+        ctx.fillRect(cx,     ry, 1, 1);
+      }
+      // Sharp tip
+      ctx.fillStyle = C_THORN_TIP;
+      ctx.fillRect(cx + (leanDir >= 0 ? 0 : -1), sy - 3 - height, 1, 1);
+
+      // Barbed thorns — every 3px, alternating sides, clearly visible
+      for(let i = 2; i < height - 1; i += 3){
+        const ry = sy - 4 - i;
+        const side = (i % 6 < 3) ? 1 : -1;
+        // Thorn base (2px)
+        ctx.fillStyle = C_THORN;
+        ctx.fillRect(cx + side * 2, ry,     2, 1);
+        ctx.fillRect(cx + side * 3, ry,     1, 1);
+        // Thorn tip (sharp, bright)
+        ctx.fillStyle = C_THORN_TIP;
+        ctx.fillRect(cx + side * 4, ry - 1, 1, 1);
+      }
+      return cx; // return final x after lean
+    }
 
     // ── Main cane ─────────────────────────────────────────────────────────────
-    // Upright woody stem, 1-2px wide, leans slightly
-    let cx = x + lean;
-    for(let i = 0; i < caneH; i++){
-      const ry = sy - 2 - i;
-      // lean shifts the column by 1px halfway up
-      if(lean !== 0 && i === (caneH>>1)) cx += lean;
-      ctx.fillStyle = C_STEM_DARK;
-      ctx.fillRect(cx,   ry, 2, 1);
-      ctx.fillStyle = C_STEM_MID;
-      ctx.fillRect(cx,   ry, 1, 1);   // highlight left edge
-    }
-    // Tip — tapers to a point
-    ctx.fillStyle = C_THORN_TIP;
-    ctx.fillRect(cx + (lean>=0?0:-1), sy-2-caneH, 1, 1);
+    const finalCX = drawCane(x + lean, caneH, false);
 
-    // Thorns on main cane — alternating left/right barbs every 2-3px
-    ctx.fillStyle = C_THORN;
-    for(let i = 1; i < caneH - 1; i += 2){
-      const ry = sy - 3 - i;
-      const side = (i % 4 === 1) ? 1 : -1;
-      ctx.fillRect(cx + side*2,  ry,   1, 1);   // barb base
+    // ── Side cane (offset to one side) ────────────────────────────────────────
+    const sideOff = (lean !== 0 ? -lean : (h7 > 0.5 ? 1 : -1)) * (5 + (h7 * 3)|0);
+    const scx = x + sideOff;
+    const finalSCX = drawCane(scx, sideH, true);
+
+    // ── Third short cane (fills gaps, makes it look dense) ────────────────────
+    if(h8 > 0.25){
+      const tcx = x + ((h8 - 0.5) * 10)|0;
+      drawCane(tcx, caneH2, true);
+    }
+
+    // ── Extra arching twig (connects clumps) ──────────────────────────────────
+    if(h4 > 0.3){
+      const twigX = x + ((h4 - 0.5) * 12)|0;
+      const twigH = (5 + h4 * 7)|0;
+      for(let i = 0; i < twigH; i++){
+        ctx.fillStyle = C_STEM_MID;
+        ctx.fillRect(twigX + (i > twigH/2 ? 1 : 0), sy - 3 - i, 2, 1);
+      }
       ctx.fillStyle = C_THORN_TIP;
-      ctx.fillRect(cx + side*3,  ry-1, 1, 1);   // barb tip (angled up)
+      ctx.fillRect(twigX + 1, sy - 3 - twigH, 1, 1);
+      // One thorn on the twig
       ctx.fillStyle = C_THORN;
-    }
-
-    // ── Side cane ─────────────────────────────────────────────────────────────
-    const scx = x - lean * 3 - 2;   // offset from main cane
-    for(let i = 0; i < sideH; i++){
-      const ry = sy - 2 - i;
-      ctx.fillStyle = C_STEM_DARK;
-      ctx.fillRect(scx, ry, 1, 1);
-    }
-    // Side cane thorns (sparser)
-    ctx.fillStyle = C_THORN;
-    if(sideH > 3) ctx.fillRect(scx - 1, sy - 4, 1, 1);
-    if(sideH > 5) ctx.fillRect(scx + 1, sy - 6, 1, 1);
-
-    // ── Extra small twig (adds density variation) ──────────────────────────
-    if(h4 > 0.4){
-      const twigX = x + ((h4 - 0.5) * 8)|0;
-      const twigH = (2 + h4 * 3)|0;
-      ctx.fillStyle = C_STEM_DARK;
-      for(let i = 0; i < twigH; i++) ctx.fillRect(twigX, sy-2-i, 1, 1);
+      ctx.fillRect(twigX + 2, sy - 5 - (twigH>>1), 2, 1);
       ctx.fillStyle = C_THORN_TIP;
-      ctx.fillRect(twigX + (h4>0.7?1:-1), sy-2-twigH, 1, 1);
+      ctx.fillRect(twigX + 4, sy - 6 - (twigH>>1), 1, 1);
     }
 
-    // ── Leaves ────────────────────────────────────────────────────────────────
-    // Leaf 1 — small 3x2 or 2x3 dark green cluster near top of main cane
-    const lx1 = cx + (h3 > 0.5 ? 2 : -3);
-    const ly1 = sy - 2 - caneH + 1;
-    ctx.fillStyle = C_LEAF_DARK;
-    ctx.fillRect(lx1,   ly1,   3, 2);
-    ctx.fillStyle = C_LEAF_MID;
-    ctx.fillRect(lx1+1, ly1,   2, 1);
-    ctx.fillStyle = C_LEAF_LITE;
-    ctx.fillRect(lx1+1, ly1,   1, 1);
-
-    // Leaf 2 (only on denser/taller briars)
-    if(h7 > 0.35){
-      const lx2 = scx + (h7 > 0.65 ? 2 : -2);
-      const ly2 = sy - 2 - (sideH>>1);
+    // ── Leaves — big enough to actually read ─────────────────────────────────
+    // Leaf 1: near top of main cane
+    {
+      const lx = finalCX + (h3 > 0.5 ? 3 : -6);
+      const ly = sy - 3 - caneH + 2;
       ctx.fillStyle = C_LEAF_DARK;
-      ctx.fillRect(lx2,   ly2,   2, 1);
-      ctx.fillRect(lx2,   ly2-1, 1, 1);
+      ctx.fillRect(lx,     ly,     6, 4);
       ctx.fillStyle = C_LEAF_MID;
-      ctx.fillRect(lx2,   ly2,   1, 1);
+      ctx.fillRect(lx + 1, ly,     5, 3);
+      ctx.fillStyle = C_LEAF_LITE;
+      ctx.fillRect(lx + 2, ly,     3, 2);
+      ctx.fillStyle = C_LEAF_EDGE;
+      ctx.fillRect(lx + 3, ly,     1, 1);   // bright tip
+      // Leaf midrib
+      ctx.fillStyle = C_LEAF_DARK;
+      ctx.fillRect(lx + 2, ly + 1, 1, 2);
     }
 
-    // ── Berries — appear on denser patches, more common at deeper floors ──────
-    if(h5 > (0.72 - density * 0.32)){
-      const bx = cx + (h5 > 0.85 ? 3 : -3);
-      const bry = sy - 3 - (caneH>>1);
+    // Leaf 2: mid-height on side cane
+    {
+      const lx = finalSCX + (h7 > 0.5 ? 3 : -6);
+      const ly = sy - 3 - (sideH * 0.55)|0;
+      ctx.fillStyle = C_LEAF_DARK;
+      ctx.fillRect(lx,     ly,     5, 3);
+      ctx.fillStyle = C_LEAF_MID;
+      ctx.fillRect(lx + 1, ly,     4, 2);
+      ctx.fillStyle = C_LEAF_LITE;
+      ctx.fillRect(lx + 2, ly,     2, 1);
+    }
+
+    // Leaf 3: lower leaf cluster at base (makes the bush look fuller)
+    {
+      const lx = x + ((h6 - 0.5) * 8)|0 - 2;
+      const ly = sy - 6;
+      ctx.fillStyle = C_LEAF_DARK;
+      ctx.fillRect(lx,     ly,     5, 3);
+      ctx.fillStyle = C_LEAF_MID;
+      ctx.fillRect(lx + 1, ly,     3, 2);
+      ctx.fillStyle = C_LEAF_LITE;
+      ctx.fillRect(lx + 2, ly,     1, 1);
+    }
+
+    // ── Berries ───────────────────────────────────────────────────────────────
+    if(h5 > (0.60 - density * 0.35)){
+      // Cluster of 2–3 berries on a short stem
+      const bx  = finalCX + (h5 > 0.8 ? 4 : -5);
+      const bry = sy - 4 - (caneH * 0.45)|0;
+      // stem
+      ctx.fillStyle = C_STEM_MID;
+      ctx.fillRect(bx + 1, bry + 1, 1, 3);
+      // berry 1
       ctx.fillStyle = C_BERRY_DARK;
-      ctx.fillRect(bx,   bry,   3, 3);
+      ctx.fillRect(bx,     bry - 1, 4, 4);
       ctx.fillStyle = C_BERRY_MID;
-      ctx.fillRect(bx+1, bry,   1, 2);
-      ctx.fillRect(bx,   bry+1, 1, 1);
-      // Berry stem
-      ctx.fillStyle = C_STEM_DARK;
-      ctx.fillRect(bx+1, bry-1, 1, 1);
+      ctx.fillRect(bx + 1, bry - 1, 3, 3);
+      ctx.fillStyle = C_BERRY_LITE;
+      ctx.fillRect(bx + 1, bry - 1, 1, 1);
+      // berry 2 (offset)
+      if(h5 > 0.45){
+        ctx.fillStyle = C_BERRY_DARK;
+        ctx.fillRect(bx + 4, bry,     3, 3);
+        ctx.fillStyle = C_BERRY_MID;
+        ctx.fillRect(bx + 4, bry,     2, 2);
+      }
     }
 
-    // ── Blood on thorns — scales up with depth ─────────────────────────────
-    if(density > 0.1){
+    // ── Blood drips — clearly red against green ────────────────────────────
+    if(density > 0.08){
       ctx.fillStyle = C_BLOOD;
-      ctx.fillRect(cx + (lean>=0?2:-3), sy - 3 - (caneH>>2),     1, 2);
-      ctx.fillRect(cx - (lean>=0?1:-2), sy - 3 - (caneH*0.6)|0,  1, 1);
+      // Drip 1 — on a thorn tip of main cane
+      const d1y = sy - 5 - (caneH * 0.35)|0;
+      ctx.fillRect(finalCX + (lean>=0 ? 5 : -5), d1y,     2, 3);
+      ctx.fillRect(finalCX + (lean>=0 ? 5 : -5), d1y + 3, 1, 2);
+      // Drip 2 — on side cane
+      if(density > 0.3){
+        const d2y = sy - 5 - (sideH * 0.5)|0;
+        ctx.fillRect(finalSCX + 3, d2y, 2, 4);
+        ctx.fillRect(finalSCX + 3, d2y + 4, 1, 1);
+      }
     }
   }
 }
