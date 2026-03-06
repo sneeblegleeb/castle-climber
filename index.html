@@ -13,7 +13,43 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 #score { font-size:20px; color:#ffdd00; text-shadow:2px 2px #000; }
 #best { font-size:12px; color:#aaffaa; }
 #coindisp { font-size:13px; color:#ffcc00; margin-top:2px; }
-#hearts { font-size:18px; margin-top:3px; letter-spacing:3px; }
+/* ── Health bar ─────────────────────────────────── */
+#hpbar-wrap {
+  margin-top:5px;
+  display:flex; align-items:center; justify-content:center; gap:5px;
+}
+#hpbar-label {
+  font-size:9px; color:#cc4444; letter-spacing:1px;
+  text-shadow:1px 1px #000;
+}
+#hpbar-segments {
+  display:flex; gap:2px; align-items:center;
+}
+.hp-seg {
+  width:14px; height:9px;
+  border:1px solid rgba(180,40,40,0.6);
+  border-radius:2px;
+  background:rgba(0,0,0,0.35);
+  transition: background 0.08s;
+  box-shadow: inset 0 1px 0 rgba(255,120,120,0.18);
+  position:relative;
+  overflow:hidden;
+}
+.hp-seg.filled {
+  background: linear-gradient(to bottom, #ff6655 0%, #cc2222 52%, #991111 100%);
+  border-color: rgba(255,100,80,0.7);
+  box-shadow: inset 0 1px 0 rgba(255,200,180,0.3), 0 0 3px rgba(200,30,30,0.4);
+}
+.hp-seg.filled::after {
+  content:''; position:absolute; top:1px; left:2px;
+  width:calc(100% - 4px); height:3px;
+  background:rgba(255,200,180,0.25); border-radius:1px;
+}
+.hp-seg.danger { animation: hp-pulse 0.55s ease-in-out infinite alternate; }
+@keyframes hp-pulse {
+  from { box-shadow: inset 0 1px 0 rgba(255,200,180,0.3), 0 0 2px rgba(200,30,30,0.4); }
+  to   { box-shadow: inset 0 1px 0 rgba(255,200,180,0.3), 0 0 7px rgba(255,60,60,0.85); border-color:rgba(255,80,60,1); }
+}
 #verdisp { font-size:9px; color:#887755; letter-spacing:1px; margin-top:2px; }
 #pausebtn, #fsbtn {
   position:absolute; top:10px;
@@ -102,7 +138,10 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
   <div id="best">BEST: 0</div>
   <div id="coindisp">⚜ 0</div>
   <div id="verdisp">v0.24-midpoint</div>
-<div id="hearts">❤️❤️❤️</div>
+<div id="hpbar-wrap">
+  <div id="hpbar-label">HP</div>
+  <div id="hpbar-segments"></div>
+</div>
 </div>
 <button id="fsbtn" onclick="toggleFS()" title="Fullscreen">⛶</button>
 <button id="pausebtn" onclick="togglePause()">⏸</button>
@@ -1332,9 +1371,29 @@ function takeDamage(s,dmg,label){
 }
 function killPlayer(s){s.alive=false;saveGame(null);showGO(s);}
 function updateHeartsUI(pl){
-  const mhp=pl.maxHp||maxHP();
-  let h='';for(let i=0;i<mhp;i++) h+=i<pl.hp?'❤️':'🖤';
-  document.getElementById('hearts').textContent=h;
+  const mhp = pl.maxHp || maxHP();
+  const cur  = pl.hp;
+  const wrap = document.getElementById('hpbar-segments');
+  if(!wrap) return;
+
+  // Rebuild segments if count changed
+  if(wrap.children.length !== mhp){
+    wrap.innerHTML = '';
+    for(let i = 0; i < mhp; i++){
+      const seg = document.createElement('div');
+      seg.className = 'hp-seg';
+      wrap.appendChild(seg);
+    }
+  }
+
+  // Update each segment
+  const segs = wrap.querySelectorAll('.hp-seg');
+  segs.forEach((seg, i) => {
+    const filled = i < cur;
+    seg.classList.toggle('filled', filled);
+    // Pulse the last filled segment when only 1 HP left
+    seg.classList.toggle('danger', filled && cur === 1 && i === 0);
+  });
 }
 
 // ── Input ─────────────────────────────────────────────────────────────────────
