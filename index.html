@@ -213,10 +213,11 @@ function toggleFS(){
 const SAVE_KEY='castle_climber_save_v2';
 
 // ── Attack constants ──────────────────────────────────────────────────────────
-const ATTACK_COOLDOWN  = 42;   // total frames before another swing (includes animation)
-const ATTACK_DURATION  = 16;   // frames the swing animation plays
-const ATTACK_RADIUS    = 62;   // pixel hit radius around knight centre
-const ATTACK_HIT_FRAME = 7;    // frame within swing at which damage is applied
+const ATTACK_DURATION      = 16;  // frames the swing animation plays
+const ATTACK_HIT_FRAME     = 7;   // frame within swing at which damage is applied
+// Base values — actual values come from upgrades via attackRadiusVal() / attackCooldownVal()
+const ATTACK_RADIUS_BASE   = 22;  // just a bit wider than the knight (18×24)
+const ATTACK_COOLDOWN_BASE = 42;  // frames between swings at level 0
 
 // ── Upgrades ─────────────────────────────────────────────────────────────────
 const UPGRADES=[
@@ -237,6 +238,8 @@ const UPGRADES=[
   {id:'batradius',name:'WARDING SIGIL',    desc:'Bats cannot agro within a wider radius',   icon:'🔯',base:80,  inc:25,    baseCost:18,  costMult:1.3},
   {id:'heartrate',name:'BLESSED GROUNDS',  desc:'Hearts of healing appear more often',      icon:'💖',base:0.04,inc:0.025, baseCost:24,  costMult:1.4},
   {id:'sporeres', name:'SPORE WARD',       desc:'Thy armor filters the toxic miasma longer',icon:'🍄',base:70,  inc:25,    baseCost:20,  costMult:1.4},
+  {id:'atkradius',name:'KEEN EDGE',         desc:'Widens thy sword strike reach',            icon:'🗡', base:22,  inc:9,     baseCost:22,  costMult:1.5,  maxLvl:8},
+  {id:'atkspeed', name:'BATTLE CADENCE',    desc:'Reduces time between strikes',             icon:'⚡',base:42,  inc:-4,    baseCost:28,  costMult:1.55, maxLvl:6},
   {id:'cp_up',   name:'CHECKPOINT BANNER (UP)',   desc:'Unlock upward checkpoints (every 1000 floors)',   icon:'▶', base:0, inc:1, baseCost:1000, costMult:1.0},
   {id:'cp_down', name:'CHECKPOINT BANNER (DOWN)', desc:'Unlock downward checkpoints (every 1000 floors)', icon:'◀', base:0, inc:1, baseCost:1000, costMult:1.0},
 ];
@@ -246,6 +249,8 @@ UPGRADES.forEach(u=>upgLevels[u.id]=0);
 let totalCoins=0,best=0,lowest=0;
 
 function upgVal(id){const u=UPGRADES.find(x=>x.id===id);return u.base+upgLevels[id]*u.inc;}
+function attackRadiusVal(){ return upgVal('atkradius'); }
+function attackCooldownVal(){ return Math.max(16, upgVal('atkspeed')|0); }
 function upgCost(id){
   const u=UPGRADES.find(x=>x.id===id);
   if(id==='cp_up'||id==='cp_down') return 1000*(upgLevels[id]+1);
@@ -521,8 +526,9 @@ function mkS(savedPos){
         hp:shp,maxHp:hp,hurtTimer:0,fallVy:0,damageFlash:0,
         airJumpsLeft:maxAirJumps(),sporeExposure:0,burstExposure:0,spikeKnock:0,spikeDir:0,
         // ── attack state ──────────────────────────────────────────────────────
-        attackTimer:0,        // counts down from ATTACK_COOLDOWN; >0 = attacking/on-cooldown
+        attackTimer:0,        // counts down; >0 = attacking/on-cooldown
         attackHitDealt:false, // ensures damage lands exactly once per swing
+        lastAttackCooldown: ATTACK_COOLDOWN_BASE, // cooldown used for current swing (for UI fill%)
     },
     cam:sy-H*.38,
     plats:[],coins:[],mushrooms:[],plants:[],slimes:[],
@@ -1109,8 +1115,10 @@ function updateSlimes(s){
 function attack(){
   if(!S || !S.alive || paused) return;
   if(S.pl.attackTimer > 0) return;
-  S.pl.attackTimer     = ATTACK_COOLDOWN;
-  S.pl.attackHitDealt  = false;
+  const cd = attackCooldownVal();
+  S.pl.lastAttackCooldown = cd;
+  S.pl.attackTimer        = cd;
+  S.pl.attackHitDealt     = false;
 }
 
 function checkAttackHits(s){
@@ -1120,7 +1128,7 @@ function checkAttackHits(s){
   for(const bt of s.bats){
     if(bt.state === 'dead') continue;
     const dx = bt.x - pl.x, dy = bt.wy - pl.y;
-    if(Math.sqrt(dx*dx + dy*dy) < ATTACK_RADIUS){
+    if(Math.sqrt(dx*dx + dy*dy) < attackRadiusVal()){
       const dist = Math.sqrt(dx*dx + dy*dy) || 1;
       bt.hp--;
       bt.hurtTimer = 55;
@@ -1146,7 +1154,7 @@ function checkAttackHits(s){
     if(plant.severed) continue;
     if(plant.hurtCooldown > 0) continue;
     const dx = plant.headX - pl.x, dy = plant.headY - pl.y;
-    if(Math.sqrt(dx*dx + dy*dy) < ATTACK_RADIUS){
+    if(Math.sqrt(dx*dx + dy*dy) < attackRadiusVal()){
       const dist = Math.sqrt(dx*dx + dy*dy) || 1;
       plant.hp--;
       plant.hurtCooldown = 55;
@@ -1175,7 +1183,7 @@ function checkAttackHits(s){
   for(const m of s.mushrooms){
     if(m.dead) continue;
     const dx = m.x - pl.x, dy = m.y - pl.y;
-    if(Math.sqrt(dx*dx + dy*dy) < ATTACK_RADIUS){
+    if(Math.sqrt(dx*dx + dy*dy) < attackRadiusVal()){
       m.hp--;
       if(m.hp <= 0){
         m.dead       = true;
@@ -1190,7 +1198,7 @@ function checkAttackHits(s){
   for(const sl of s.slimes){
     if(sl.dead) continue;
     const dx = sl.x - pl.x, dy = (sl.y - 7) - pl.y;
-    if(Math.sqrt(dx*dx + dy*dy) < ATTACK_RADIUS){
+    if(Math.sqrt(dx*dx + dy*dy) < attackRadiusVal()){
       const dist = Math.sqrt(dx*dx + dy*dy) || 1;
       sl.hp--;
       sl.hurtTimer = 50;
@@ -1210,18 +1218,17 @@ function checkAttackHits(s){
   }
 }
 
-// Update the attack button visuals each frame
 function updateAttackBtnUI(){
-  const btn = document.getElementById('attackbtn');
+  const btn  = document.getElementById('attackbtn');
   const fill = document.getElementById('cd-fill');
   if(!btn || !fill) return;
   const timer = S && S.pl ? S.pl.attackTimer : 0;
-  const onCd  = timer > 0;
-  const swinging = timer > (ATTACK_COOLDOWN - ATTACK_DURATION);
+  const cd    = S && S.pl ? (S.pl.lastAttackCooldown || ATTACK_COOLDOWN_BASE) : ATTACK_COOLDOWN_BASE;
+  const onCd    = timer > 0;
+  const swinging = timer > (cd - ATTACK_DURATION);
   btn.classList.toggle('ready',       !onCd);
   btn.classList.toggle('on-cooldown', onCd && !swinging);
-  // Fill bar drains as cooldown ticks down
-  const fillPct = onCd ? (timer / ATTACK_COOLDOWN) * 100 : 0;
+  const fillPct = onCd ? (timer / cd) * 100 : 0;
   fill.style.height = fillPct + '%';
 }
 
@@ -1236,8 +1243,7 @@ function update(s){
   // ── Tick attack timer; apply hit at the correct frame ─────────────────────
   if(pl.attackTimer > 0){
     pl.attackTimer--;
-    // The animation window is the top of the countdown
-    const frameInSwing = ATTACK_COOLDOWN - pl.attackTimer;
+    const frameInSwing = pl.lastAttackCooldown - pl.attackTimer;
     if(frameInSwing === ATTACK_HIT_FRAME && !pl.attackHitDealt){
       pl.attackHitDealt = true;
       checkAttackHits(s);
@@ -2003,7 +2009,7 @@ function drawAttackArc(pl, swingProgress){
   ctx.lineWidth = 2;
   ctx.setLineDash([4,5]);
   ctx.beginPath();
-  ctx.arc(sx, sy, ATTACK_RADIUS, 0, Math.PI * 2);
+  ctx.arc(sx, sy, attackRadiusVal(), 0, Math.PI * 2);
   ctx.stroke();
   ctx.setLineDash([]);
 
@@ -2014,13 +2020,13 @@ function drawAttackArc(pl, swingProgress){
   ctx.strokeStyle = '#fff8aa';
   ctx.lineWidth   = 3;
   ctx.beginPath();
-  ctx.arc(sx, sy, ATTACK_RADIUS * 0.72, arcStart, arcEnd);
+  ctx.arc(sx, sy, attackRadiusVal() * 0.72, arcStart, arcEnd);
   ctx.stroke();
 
   // Bright tip dot
   const tipAngle = arcStart + (arcEnd - arcStart) * 0.5;
-  const tx2 = sx + Math.cos(tipAngle) * ATTACK_RADIUS * 0.72;
-  const ty2 = sy + Math.sin(tipAngle) * ATTACK_RADIUS * 0.72;
+  const tx2 = sx + Math.cos(tipAngle) * attackRadiusVal() * 0.72;
+  const ty2 = sy + Math.sin(tipAngle) * attackRadiusVal() * 0.72;
   ctx.globalAlpha = bloom * 0.9;
   ctx.fillStyle   = '#ffffff';
   ctx.beginPath();
@@ -2039,8 +2045,8 @@ function drawKnight(){
   const moving=Math.abs(pl.vx)>0.5,legOff=pl.onG&&moving?Math.sin(S.tick*0.3)*3:0;
 
   // ── Determine attack animation state ──────────────────────────────────────
-  // attackTimer counts down from ATTACK_COOLDOWN; swing happens in the first ATTACK_DURATION frames
-  const frameInSwing = ATTACK_COOLDOWN - pl.attackTimer;
+  // swing happens in the first ATTACK_DURATION frames of the countdown
+  const frameInSwing = (pl.lastAttackCooldown || ATTACK_COOLDOWN_BASE) - pl.attackTimer;
   const isSwinging   = pl.attackTimer > 0 && frameInSwing <= ATTACK_DURATION;
   const swingProgress = isSwinging ? frameInSwing / ATTACK_DURATION : 0;  // 0..1
 
