@@ -925,47 +925,71 @@ function drawCastleWall(){
       // Window slits + larger windows (deterministic)
       const hw=hash2(row*3, col*7);
       const wx=bx+10+((hash2(row,col*13)*10)|0);
-      // Small slit
-      if(hw<0.08){
-        ctx.fillStyle='#0e0c0a';
-        ctx.fillRect(wx,wy+4,1,6);
-        // subtle rim highlight
-        ctx.fillStyle='rgba(120,100,70,0.18)';
-        ctx.fillRect(wx-1,wy+4,1,6);
+
+      // Helper: avoid placing windows where they would clip into side walls or intersect platforms
+      const winBlocked=(x0,y0,w0,h0)=>{
+        if(x0 < WALL+6 || x0+w0 > W-WALL-6) return true;
+        for(const p of S.plats){
+          // world-space overlap test with a small margin
+          if(x0+w0 > p.x-2 && x0 < p.x+p.w+2 && y0+h0 > p.y-2 && y0 < p.y+p.h+2) return true;
+        }
+        return false;
+      };
+
+      // Small slit (about 3× less common)
+      if(hw < 0.0267){
+        // avoid slits near walls or behind platforms
+        const slitWorldX = wx;
+        const slitWorldY = row*bH + 4;
+        if(!winBlocked(slitWorldX-1, slitWorldY, 3, 8)){
+          ctx.fillStyle='#0e0c0a';
+          ctx.fillRect(wx,wy+4,1,6);
+          // subtle rim highlight
+          ctx.fillStyle='rgba(120,100,70,0.16)';
+          ctx.fillRect(wx-1,wy+4,1,6);
+        }
       }
-      // Larger arched window (rare)
-      else if(hw>0.992){
+      // Larger arched window (about 3× less common, ~3× bigger)
+      else if(hw > 0.9973){
         const cx=(bx + (bW>>1))|0;
-        const w=8,h=10, top=(wy+3)|0;
-        // glow (moonlight or torchlight depending on depth)
-        const glow = Math.min(0.35, 0.12 + (Math.min(1,Math.abs(S.score)/4500))*0.22);
-        const g=ctx.createRadialGradient(cx,top+5,0,cx,top+5,16);
-        g.addColorStop(0,`rgba(255,210,110,${glow})`);
-        g.addColorStop(1,'rgba(255,160,40,0)');
-        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,top+6,18,0,Math.PI*2); ctx.fill();
+        const w=24,h=30, top=(wy+2)|0;
 
-        // window void
-        ctx.fillStyle='#0b0908';
-        ctx.fillRect(cx-(w>>1), top+3, w, h-3);
-        ctx.fillRect(cx-2, top+2, 4, 1); // arch cap
-        ctx.fillRect(cx-1, top+1, 2, 1);
+        const winWorldX = cx-(w>>1);
+        const winWorldY = row*bH + 2;
+        if(!winBlocked(winWorldX, winWorldY, w, h)){
+          // glow (warm candlelight)
+          const glow = Math.min(0.32, 0.10 + (Math.min(1,Math.abs(S.score)/4500))*0.20);
+          const g=ctx.createRadialGradient(cx,top+14,0,cx,top+14,48);
+          g.addColorStop(0,`rgba(255,210,110,${glow})`);
+          g.addColorStop(1,'rgba(255,160,40,0)');
+          ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,top+14,52,0,Math.PI*2); ctx.fill();
 
-        // stone frame
-        ctx.fillStyle='#3a332c';
-        ctx.fillRect(cx-(w>>1)-1, top+3, 1, h-2);
-        ctx.fillRect(cx+(w>>1),   top+3, 1, h-2);
-        ctx.fillRect(cx-(w>>1)-1, top+h, w+2, 1);
-        ctx.fillRect(cx-3, top+2, 1, 1); ctx.fillRect(cx+2, top+2, 1, 1);
+          // window void
+          ctx.fillStyle='#0b0908';
+          ctx.fillRect(cx-(w>>1), top+9, w, h-9);
+          // arch cap (stepped)
+          ctx.fillRect(cx-6, top+8, 12, 1);
+          ctx.fillRect(cx-4, top+7, 8, 1);
+          ctx.fillRect(cx-2, top+6, 4, 1);
+          ctx.fillRect(cx-1, top+5, 2, 1);
 
-        // inner warm pixels
-        ctx.fillStyle='rgba(255,200,90,0.35)';
-        ctx.fillRect(cx-2, top+6, 1, 2);
-        ctx.fillRect(cx+1, top+7, 1, 1);
+          // stone frame
+          ctx.fillStyle='#3a332c';
+          ctx.fillRect(cx-(w>>1)-1, top+9, 1, h-8);
+          ctx.fillRect(cx+(w>>1),   top+9, 1, h-8);
+          ctx.fillRect(cx-(w>>1)-1, top+h, w+2, 1);
 
-        // simple cross bars
-        ctx.fillStyle='rgba(40,30,20,0.55)';
-        ctx.fillRect(cx, top+4, 1, h-5);
-        ctx.fillRect(cx-(w>>1)+1, top+8, w-2, 1);
+          // inner warm pixels
+          ctx.fillStyle='rgba(255,200,90,0.30)';
+          ctx.fillRect(cx-7, top+14, 2, 3);
+          ctx.fillRect(cx+5, top+16, 2, 2);
+          ctx.fillRect(cx-1, top+20, 2, 2);
+
+          // cross bars
+          ctx.fillStyle='rgba(40,30,20,0.55)';
+          ctx.fillRect(cx, top+10, 1, h-12);
+          ctx.fillRect(cx-(w>>1)+2, top+19, w-4, 1);
+        }
       }
     }
   }
@@ -1040,16 +1064,30 @@ function drawPlatform(p){
     ctx.fillStyle='#50483e';
     for(let i=4;i<p.w-4;i+=16) ctx.fillRect(px(p.x+i),sy-3,8,4);
 
-    // cracks + chips (deterministic)
-    const h1=hash2(p.id,21), h2=hash2(p.id,22), h3=hash2(p.id,23);
-    ctx.fillStyle='rgba(0,0,0,0.22)';
+    // cracks + chips (deterministic) — slightly more prominent
+    const h1=hash2(p.id,21), h2=hash2(p.id,22), h3=hash2(p.id,23), h4=hash2(p.id,24);
+    ctx.fillStyle='rgba(0,0,0,0.34)';
+
+    // main crack
     const cx=px(p.x+6 + h1*(p.w-18));
-    ctx.fillRect(cx,sy+3,1,7);
-    ctx.fillRect(cx-5,sy+6,5,1);
-    if(h2>0.55) ctx.fillRect(cx+1,sy+7,4,1);
+    ctx.fillRect(cx,sy+2,1,9);
+    ctx.fillRect(cx-6,sy+6,6,1);
+    ctx.fillRect(cx-3,sy+8,3,1);
+    if(h2>0.45) ctx.fillRect(cx+1,sy+7,5,1);
+    if(h2>0.72) ctx.fillRect(cx+2,sy+4,3,1);
+
+    // secondary hairline crack (rare)
+    if(h4>0.66){
+      const cx2=px(p.x+10 + h4*(p.w-24));
+      ctx.fillStyle='rgba(0,0,0,0.24)';
+      ctx.fillRect(cx2,sy+4,1,6);
+      ctx.fillRect(cx2-4,sy+7,4,1);
+      ctx.fillStyle='rgba(0,0,0,0.34)';
+    }
+
     // chipped corner pixels
-    if(h3<0.45){ ctx.fillRect(px(p.x+3),sy+9,1,1); }
-    if(h3>0.62){ ctx.fillRect(px(p.x+p.w-6),sy+7,1,1); }
+    if(h3<0.55){ ctx.fillRect(px(p.x+3),sy+9,1,1); ctx.fillRect(px(p.x+5),sy+10,1,1); }
+    if(h3>0.62){ ctx.fillRect(px(p.x+p.w-6),sy+7,1,1); ctx.fillRect(px(p.x+p.w-8),sy+8,1,1); }
 
     // inner seam + columns
     ctx.fillStyle='#33302a';
