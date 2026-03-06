@@ -395,6 +395,8 @@ function teleportToCheckpoint(dir,tier){
 function hashY(y){let h=Math.sin(y*127.1+311.7)*43758.5453;return h-Math.floor(h);}
 function hash2(a,b){let h=Math.sin(a*127.1+b*311.7+92.3)*43758.5453;return h-Math.floor(h);}
 
+function platId(wy){return Math.round(wy/10);}
+
 // ── Spike helpers ─────────────────────────────────────────────────────────────
 const SPIKE_START = 300;
 const SPIKE_FULL  = 8000;
@@ -1000,12 +1002,11 @@ function updateSlimes(s){
 
       // Landing on top
       if(sl.prevY <= p.y && sl.vy >= 0){
-        const impactVY = sl.vy;
         sl.y      = p.y;
         sl.vy     = 0;
         sl.onGround = true;
         // Squish on landing proportional to fall speed
-        const impact = Math.min(1, Math.abs(impactVY) / 8);
+        const impact = Math.min(1, Math.abs(sl.vy) / 8);
         if(impact > 0.15){
           sl.squish      = impact * 0.85;
           sl.squishTimer = 12;
