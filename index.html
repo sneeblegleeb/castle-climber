@@ -214,7 +214,6 @@ const SAVE_KEY='castle_climber_save_v2';
 
 // ── Attack constants ──────────────────────────────────────────────────────────
 const ATTACK_DURATION      = 16;  // frames the swing animation plays
-const ATTACK_HIT_FRAME     = 7;   // frame within swing at which damage is applied
 // Base values — actual values come from upgrades via attackRadiusVal() / attackCooldownVal()
 const ATTACK_RADIUS_BASE   = 22;  // just a bit wider than the knight (18×24)
 const ATTACK_COOLDOWN_BASE = 42;  // frames between swings at level 0
@@ -526,9 +525,9 @@ function mkS(savedPos){
         hp:shp,maxHp:hp,hurtTimer:0,fallVy:0,damageFlash:0,
         airJumpsLeft:maxAirJumps(),sporeExposure:0,burstExposure:0,spikeKnock:0,spikeDir:0,
         // ── attack state ──────────────────────────────────────────────────────
-        attackTimer:0,        // counts down; >0 = attacking/on-cooldown
-        attackHitDealt:false, // ensures damage lands exactly once per swing
-        lastAttackCooldown: ATTACK_COOLDOWN_BASE, // cooldown used for current swing (for UI fill%)
+        attackTimer:0,   // counts down; >0 = attacking/on-cooldown
+        swingId:0,       // increments each swing; entities track lastHitSwing to avoid double-hits
+        lastAttackCooldown: ATTACK_COOLDOWN_BASE,
     },
     cam:sy-H*.38,
     plats:[],coins:[],mushrooms:[],plants:[],slimes:[],
@@ -1118,28 +1117,29 @@ function attack(){
   const cd = attackCooldownVal();
   S.pl.lastAttackCooldown = cd;
   S.pl.attackTimer        = cd;
-  S.pl.attackHitDealt     = false;
+  S.pl.swingId            = (S.pl.swingId + 1) | 0;
 }
 
 function checkAttackHits(s){
-  const pl = s.pl;
+  const pl  = s.pl;
+  const sid = pl.swingId;  // only hit each entity once per swing
 
   // ── Bats (2 HP) ────────────────────────────────────────────────────────────
   for(const bt of s.bats){
     if(bt.state === 'dead') continue;
+    if(bt.lastHitSwing === sid) continue;
     const dx = bt.x - pl.x, dy = bt.wy - pl.y;
     if(Math.sqrt(dx*dx + dy*dy) < attackRadiusVal()){
+      bt.lastHitSwing = sid;
       const dist = Math.sqrt(dx*dx + dy*dy) || 1;
       bt.hp--;
       bt.hurtTimer = 55;
       if(bt.hp <= 0){
-        // Kill: enter dead-fall state
         bt.state  = 'dead';
         bt.deadVX = (dx/dist) * 3.5;
         bt.deadVY = -2.0;
         addFloat(bt.x, bt.wy - s.cam - 14, '💀 SLAIN!', '#ffdd44');
       } else {
-        // Hurt: knock back
         bt.state        = 'retreating';
         bt.retreatTimer = 130;
         bt.dvx          = (dx/dist) * 5.5;
@@ -1153,21 +1153,20 @@ function checkAttackHits(s){
   for(const plant of s.plants){
     if(plant.severed) continue;
     if(plant.hurtCooldown > 0) continue;
+    if(plant.lastHitSwing === sid) continue;
     const dx = plant.headX - pl.x, dy = plant.headY - pl.y;
     if(Math.sqrt(dx*dx + dy*dy) < attackRadiusVal()){
+      plant.lastHitSwing = sid;
       const dist = Math.sqrt(dx*dx + dy*dy) || 1;
       plant.hp--;
       plant.hurtCooldown = 55;
       if(plant.hp <= 0){
-        // Kill: sever the head
         plant.severed  = true;
-        // Fling head away from sword with a spin
         plant.headVX   = (dx/dist) * 5 + (Math.random()-0.5)*2;
         plant.headVY   = (dy/dist) * 5 - 2.5;
-        plant.headSpin = (Math.random()-0.5) * 0.22; // rotation speed
+        plant.headSpin = (Math.random()-0.5) * 0.22;
         addFloat(plant.headX, (plant.headY - s.cam) - 18, '💀 SEVERED!', '#aaffaa');
       } else {
-        // Hurt: recoil and interrupt snap
         plant.state     = 'reopening';
         plant.snapTimer = 0;
         plant.mouthOpen = 0;
@@ -1182,12 +1181,14 @@ function checkAttackHits(s){
   // ── Mushrooms (1 HP) ───────────────────────────────────────────────────────
   for(const m of s.mushrooms){
     if(m.dead) continue;
+    if(m.lastHitSwing === sid) continue;
     const dx = m.x - pl.x, dy = m.y - pl.y;
     if(Math.sqrt(dx*dx + dy*dy) < attackRadiusVal()){
+      m.lastHitSwing = sid;
       m.hp--;
       if(m.hp <= 0){
         m.dead       = true;
-        m.cloud      = null; // clear normal cloud
+        m.cloud      = null;
         m.burstCloud = { timer: BURST_CLOUD_DURATION, maxTimer: BURST_CLOUD_DURATION };
         addFloat(m.x, m.y - s.cam - 22, '💥 BURST!', '#88ff44');
       }
@@ -1197,8 +1198,10 @@ function checkAttackHits(s){
   // ── Slimes (2 HP) ──────────────────────────────────────────────────────────
   for(const sl of s.slimes){
     if(sl.dead) continue;
+    if(sl.lastHitSwing === sid) continue;
     const dx = sl.x - pl.x, dy = (sl.y - 7) - pl.y;
     if(Math.sqrt(dx*dx + dy*dy) < attackRadiusVal()){
+      sl.lastHitSwing = sid;
       const dist = Math.sqrt(dx*dx + dy*dy) || 1;
       sl.hp--;
       sl.hurtTimer = 50;
@@ -1240,12 +1243,11 @@ function update(s){
   const ts=timeScale;
   const abT = 1-(1-ab)*ts;
 
-  // ── Tick attack timer; apply hit at the correct frame ─────────────────────
+  // ── Tick attack timer; check hits every frame of the swing window ────────────
   if(pl.attackTimer > 0){
     pl.attackTimer--;
     const frameInSwing = pl.lastAttackCooldown - pl.attackTimer;
-    if(frameInSwing === ATTACK_HIT_FRAME && !pl.attackHitDealt){
-      pl.attackHitDealt = true;
+    if(frameInSwing >= 1 && frameInSwing <= ATTACK_DURATION){
       checkAttackHits(s);
     }
   }
