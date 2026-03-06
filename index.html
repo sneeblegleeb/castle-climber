@@ -26,6 +26,28 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 #fsbtn { right:54px; font-size:14px; }
 #pausebtn:hover, #fsbtn:hover { border-color:#ffdd00; }
 
+/* ── Attack button ─────────────────────────────────────────── */
+#attackbtn {
+  position:absolute; bottom:16px; left:16px;
+  background:rgba(0,0,0,0.70); border:2px solid #aa7733;
+  color:#ffcc44; font-family:monospace; font-size:22px;
+  width:56px; height:56px; cursor:pointer;
+  display:none; align-items:center; justify-content:center; z-index:10;
+  border-radius:4px;
+  box-shadow:0 0 10px rgba(180,100,0,0.25);
+  transition: border-color 0.1s;
+  user-select:none; -webkit-user-select:none;
+}
+#attackbtn:hover { border-color:#ffdd00; }
+#attackbtn.ready { border-color:#ffcc44; color:#ffdd00; box-shadow:0 0 14px rgba(255,160,0,0.4); }
+#attackbtn.on-cooldown { border-color:#443322; color:#553311; box-shadow:none; }
+/* cooldown fill overlay */
+#attackbtn .cd-fill {
+  position:absolute; bottom:0; left:0; width:100%;
+  background:rgba(255,120,0,0.18); pointer-events:none;
+  transition: height 0.05s linear;
+}
+
 #cpupbtn, #cpdownbtn{
   position:absolute; left:8px;
   background:rgba(0,0,0,0.6); border:2px solid #888;
@@ -87,6 +109,11 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 <button id="cpupbtn" onclick="cycleCheckpoint(1)" title="Checkpoint Up">▲</button>
 <button id="cpdownbtn" onclick="cycleCheckpoint(-1)" title="Checkpoint Down">▼</button>
 
+<!-- Attack button -->
+<button id="attackbtn" onclick="attack()" title="Sword Attack">
+  ⚔
+  <div class="cd-fill" id="cd-fill" style="height:0%"></div>
+</button>
 
 <div class="panel" id="go">
   <h2 id="go-title">⚔ SLAIN ⚔</h2>
@@ -145,6 +172,12 @@ function toggleFS(){
   document.addEventListener(ev,()=>setTimeout(resize,50))
 );
 const SAVE_KEY='castle_climber_save_v2';
+
+// ── Attack constants ──────────────────────────────────────────────────────────
+const ATTACK_COOLDOWN  = 42;   // total frames before another swing (includes animation)
+const ATTACK_DURATION  = 16;   // frames the swing animation plays
+const ATTACK_RADIUS    = 62;   // pixel hit radius around knight centre
+const ATTACK_HIT_FRAME = 7;    // frame within swing at which damage is applied
 
 // ── Upgrades ─────────────────────────────────────────────────────────────────
 const UPGRADES=[
@@ -221,15 +254,15 @@ const MUSH_FULL  = 4500;
 const MUSH_MAX_DENSITY = 0.38;
 
 // ── Carnivorous Plant constants ───────────────────────────────────────────────
-const PLANT_START        = 500;   // floor depth where plants begin appearing
-const PLANT_FULL         = 5000;  // floor depth where plant density peaks
-const PLANT_MAX_DENSITY  = 0.22;  // max fraction of eligible platforms with a plant
-const PLANT_AGRO         = 16;    // smaller bite radius
-const PLANT_TRACK_RADIUS = 120;   // larger tracking / lunge trigger radius
-const PLANT_MAX_REACH    = 44;    // max distance head can stray from base
-const SNAP_FRAMES        = 7;     // frames to fully close jaws
-const CLOSED_HOLD        = 50;    // frames plant stays shut before reopening
-const OPEN_FRAMES        = 22;    // frames to reopen
+const PLANT_START        = 500;
+const PLANT_FULL         = 5000;
+const PLANT_MAX_DENSITY  = 0.22;
+const PLANT_AGRO         = 16;
+const PLANT_TRACK_RADIUS = 120;
+const PLANT_MAX_REACH    = 44;
+const SNAP_FRAMES        = 7;
+const CLOSED_HOLD        = 50;
+const OPEN_FRAMES        = 22;
 
 let timeScale=1.0;
 let timeSlowTimer=0;
@@ -274,8 +307,6 @@ function cycleCheckpoint(dir){
   const maxDown = ownedCPTiers(-1);
 
   if(dir > 0){
-
-    // if coming up from negative side, go to 0 first
     if(cpSelDown > 0){
       cpSelDown--;
       if(cpSelDown === 0){
@@ -287,17 +318,11 @@ function cycleCheckpoint(dir){
       updateCheckpointUI();
       return;
     }
-
     if(maxUp <= 0) return;
-
     cpSelUp++;
     if(cpSelUp > maxUp) cpSelUp = 1;
-
     teleportToCheckpoint(1, cpSelUp);
-
   } else {
-
-    // if coming down from positive side, go to 0 first
     if(cpSelUp > 0){
       cpSelUp--;
       if(cpSelUp === 0){
@@ -309,12 +334,9 @@ function cycleCheckpoint(dir){
       updateCheckpointUI();
       return;
     }
-
     if(maxDown <= 0) return;
-
     cpSelDown++;
     if(cpSelDown > maxDown) cpSelDown = 1;
-
     teleportToCheckpoint(-1, cpSelDown);
   }
 
@@ -348,7 +370,6 @@ function teleportToCheckpoint(dir,tier){
     p.safe = true;
   }
 
-  // strip any hazards already tied to this platform
   S.mushrooms = S.mushrooms.filter(m => m.platId !== id);
   S.plants    = S.plants.filter(pl => pl.platId !== id);
 
@@ -377,8 +398,6 @@ function mushroomXForPlat(p){
   return p.x + 10 + hash2(p.id, 88) * (p.w - 20);
 }
 
-// Returns deterministic plant X on a given platform (mirrors tryPlacePlant logic).
-// Used by getPlatSpikes to avoid overlapping spikes with plant stems.
 function plantXForPlat(p){
   if(p.safe || p.checkpoint) return null;
   const absScore = Math.abs(p.y) / 10;
@@ -447,7 +466,11 @@ function mkS(savedPos){
   const s={
     pl:{x:sx,y:sy,vx:0,vy:0,w:18,h:24,onG:false,coyote:0,
         hp:shp,maxHp:hp,hurtTimer:0,fallVy:0,damageFlash:0,
-        airJumpsLeft:maxAirJumps(),sporeExposure:0,spikeKnock:0,spikeDir:0},
+        airJumpsLeft:maxAirJumps(),sporeExposure:0,spikeKnock:0,spikeDir:0,
+        // ── attack state ──────────────────────────────────────────────────────
+        attackTimer:0,        // counts down from ATTACK_COOLDOWN; >0 = attacking/on-cooldown
+        attackHitDealt:false, // ensures damage lands exactly once per swing
+    },
     cam:sy-H*.38,
     plats:[],coins:[],mushrooms:[],plants:[],
     collectedCoins:new Set(),
@@ -547,29 +570,27 @@ function tryPlacePlant(s, p){
 
   const absScore = Math.abs(p.y) / 10;
   if(absScore < PLANT_START) return;
-  // Don't co-spawn with a mushroom on the same platform
   if(s.mushrooms.some(m=>m.platId===p.id)) return;
   if(s.plants.some(pl=>pl.platId===p.id)) return;
   if(p.w < 30) return;
   const density = Math.min(1, (absScore - PLANT_START) / (PLANT_FULL - PLANT_START));
   if(hash2(p.id*71+3, 55) > density * PLANT_MAX_DENSITY) return;
   const px = p.x + 14 + hash2(p.id, 66) * (p.w - 28);
-  const restY = p.y - 22;   // resting world-Y of head (above stem base)
+  const restY = p.y - 22;
   s.plants.push({
-    x: px, y: p.y,           // base anchor (world)
+    x: px, y: p.y,
     platId: p.id,
-    state: 'open',           // 'open' | 'snapping' | 'closed' | 'reopening'
-    mouthOpen: 1.0,          // 0 = fully closed, 1 = fully open
+    state: 'open',
+    mouthOpen: 1.0,
     snapTimer: 0,
     bobAngle: hash2(p.id, 93) * Math.PI * 2,
     hurtCooldown: 0,
     absScore,
-    // Head tracking state (world coordinates)
-    headX: px,               // current head position
+    headX: px,
     headY: restY,
-    headVX: 0,               // head velocity (spring physics)
+    headVX: 0,
     headVY: 0,
-    restY,                   // resting world-Y above base
+    restY,
   });
 }
 
@@ -649,21 +670,18 @@ function updatePlants(s){
     plant.bobAngle += 0.03;
     if(plant.hurtCooldown > 0) plant.hurtCooldown--;
 
-    // Distance from BASE to player (used for tracking decisions)
     const bdx = pl.x - plant.x;
     const bdy = pl.y - plant.y;
     const baseDist = Math.sqrt(bdx*bdx + bdy*bdy);
 
-    // Distance from HEAD to player (used for snap trigger + damage)
     const hdx = pl.x - plant.headX;
     const hdy = pl.y - plant.headY;
     const headDist = Math.sqrt(hdx*hdx + hdy*hdy);
 
-    // ── Determine spring target for the head ──────────────────────────────────
     let targetX = plant.x;
     let targetY = plant.restY;
-    let springK = 0.055;   // stiffness
-    let damping = 0.78;    // velocity damping
+    let springK = 0.055;
+    let damping = 0.78;
 
     const playerAboveBase = pl.y < plant.y + 10;
 
@@ -671,18 +689,15 @@ function updatePlants(s){
       plant.mouthOpen = 0.6 + 0.4 * Math.abs(Math.sin(plant.bobAngle * 0.32));
 
       if(baseDist < PLANT_TRACK_RADIUS && playerAboveBase){
-        // Track player — spring toward player but constrained by reach
         targetX = pl.x;
         targetY = pl.y;
         springK = 0.045;
       } else {
-        // Idle sway at rest
         const sway = Math.sin(plant.bobAngle * 0.38) * 3.5;
         targetX = plant.x + sway;
         targetY = plant.restY + Math.sin(plant.bobAngle * 0.22) * 2;
       }
 
-      // Snap when head gets close to player
       if(headDist < PLANT_AGRO && playerAboveBase){
         plant.state     = 'snapping';
         plant.snapTimer = 0;
@@ -691,8 +706,6 @@ function updatePlants(s){
     } else if(plant.state === 'snapping'){
       plant.snapTimer++;
       plant.mouthOpen = Math.max(0, 1.0 - plant.snapTimer / SNAP_FRAMES);
-
-      // Lunge toward player during snap
       targetX = pl.x;
       targetY = pl.y;
       springK = 0.32;
@@ -702,7 +715,6 @@ function updatePlants(s){
         plant.state     = 'closed';
         plant.snapTimer = 0;
         plant.mouthOpen = 0;
-        // Damage check uses HEAD position
         if(headDist < PLANT_AGRO && plant.hurtCooldown <= 0){
           takeDamage(s, 1, '🌿 CHOMPED!');
           plant.hurtCooldown = 110;
@@ -712,7 +724,6 @@ function updatePlants(s){
     } else if(plant.state === 'closed'){
       plant.mouthOpen = 0;
       plant.snapTimer++;
-      // Hold in place while closed, slowly drift back
       targetX = plant.x + (plant.headX - plant.x) * 0.4;
       targetY = plant.restY + (plant.headY - plant.restY) * 0.4;
       springK = 0.06;
@@ -724,7 +735,6 @@ function updatePlants(s){
     } else if(plant.state === 'reopening'){
       plant.snapTimer++;
       plant.mouthOpen = Math.min(1.0, plant.snapTimer / OPEN_FRAMES);
-      // Retreat back to rest
       targetX = plant.x;
       targetY = plant.restY;
       springK = 0.07;
@@ -734,7 +744,6 @@ function updatePlants(s){
       }
     }
 
-    // ── Spring physics (scaled by timeScale so slow-time feels right) ─────────
     plant.headVX += (targetX - plant.headX) * springK * ts;
     plant.headVY += (targetY - plant.headY) * springK * ts;
     const damp = 1 - (1 - damping) * ts;
@@ -743,7 +752,6 @@ function updatePlants(s){
     plant.headX  += plant.headVX * ts;
     plant.headY  += plant.headVY * ts;
 
-    // ── Clamp head to max reach from base ─────────────────────────────────────
     const rdx  = plant.headX - plant.x;
     const rdy  = plant.headY - plant.y;
     const rDist = Math.sqrt(rdx*rdx + rdy*rdy);
@@ -751,14 +759,12 @@ function updatePlants(s){
       const scale = PLANT_MAX_REACH / rDist;
       plant.headX = plant.x + rdx * scale;
       plant.headY = plant.y + rdy * scale;
-      // Kill outward velocity so it doesn't oscillate against the constraint
       const dot = plant.headVX*(rdx/rDist) + plant.headVY*(rdy/rDist);
       if(dot > 0){
         plant.headVX -= (rdx/rDist) * dot;
         plant.headVY -= (rdy/rDist) * dot;
       }
     }
-    // Prevent head from going below the platform surface
     if(plant.headY > plant.y - 4){
       plant.headY = plant.y - 4;
       if(plant.headVY > 0) plant.headVY = 0;
@@ -789,15 +795,14 @@ function updateBats(s){
         bt.state='agro';bt.agroTimer=90+Math.random()*60;
       }
     } else if(bt.state==='agro'){
-      bt.flap+=0.18; // faster wing-beat while agitated
-      // Erratic jitter: random velocity kicks every ~6 frames
+      bt.flap+=0.18;
       if(Math.floor(bt.agroTimer)%6===0){
         bt.vx += (Math.random()-0.5)*3.2;
         bt.wy += (Math.random()-0.5)*2.4;
       }
-      bt.vx *= 0.88; // light damping so it doesn't fly off screen
+      bt.vx *= 0.88;
       bt.x  += bt.vx*1.4*ts;
-      bt.wy += (Math.random()-0.5)*0.6*ts; // constant small vertical wobble
+      bt.wy += (Math.random()-0.5)*0.6*ts;
       if(bt.x<WALL+10||bt.x>W-WALL-10) bt.vx*=-1;
       bt.x = Math.max(WALL+10, Math.min(W-WALL-10, bt.x));
       if(--bt.agroTimer<=0){
@@ -823,6 +828,63 @@ function updateBats(s){
   }
 }
 
+// ── Attack system ─────────────────────────────────────────────────────────────
+function attack(){
+  if(!S || !S.alive || paused) return;
+  if(S.pl.attackTimer > 0) return;
+  S.pl.attackTimer     = ATTACK_COOLDOWN;
+  S.pl.attackHitDealt  = false;
+}
+
+function checkAttackHits(s){
+  const pl = s.pl;
+  // Hit bats within radius
+  for(const bt of s.bats){
+    const dx = bt.x - pl.x, dy = bt.wy - pl.y;
+    if(Math.sqrt(dx*dx + dy*dy) < ATTACK_RADIUS){
+      const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      bt.state        = 'retreating';
+      bt.retreatTimer = 130;
+      bt.dvx          = (dx/dist) * 5.5;
+      bt.dvy          = (dy/dist) * 5.5 - 1.5;
+      bt.hurtTimer    = 55;
+      addFloat(bt.x, bt.wy - s.cam - 12, '⚔ SLASH!', '#ffcc44');
+    }
+  }
+  // Interrupt plants that are tracking/snapping nearby
+  for(const plant of s.plants){
+    const dx = plant.headX - pl.x, dy = plant.headY - pl.y;
+    if(Math.sqrt(dx*dx + dy*dy) < ATTACK_RADIUS){
+      if(plant.state === 'snapping' || plant.state === 'open'){
+        plant.state       = 'reopening';
+        plant.snapTimer   = 0;
+        plant.mouthOpen   = 0;
+        plant.hurtCooldown = 80;
+        // Recoil the head away
+        const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+        plant.headVX += (dx/dist) * 6;
+        plant.headVY += (dy/dist) * 6;
+        addFloat(plant.headX, (plant.headY - s.cam) - 14, '⚔ SLASH!', '#aaffaa');
+      }
+    }
+  }
+}
+
+// Update the attack button visuals each frame
+function updateAttackBtnUI(){
+  const btn = document.getElementById('attackbtn');
+  const fill = document.getElementById('cd-fill');
+  if(!btn || !fill) return;
+  const timer = S && S.pl ? S.pl.attackTimer : 0;
+  const onCd  = timer > 0;
+  const swinging = timer > (ATTACK_COOLDOWN - ATTACK_DURATION);
+  btn.classList.toggle('ready',       !onCd);
+  btn.classList.toggle('on-cooldown', onCd && !swinging);
+  // Fill bar drains as cooldown ticks down
+  const fillPct = onCd ? (timer / ATTACK_COOLDOWN) * 100 : 0;
+  fill.style.height = fillPct + '%';
+}
+
 // ── Update ────────────────────────────────────────────────────────────────────
 function update(s){
   s.tick++;
@@ -830,6 +892,18 @@ function update(s){
   const grav=gravVal(),ab=airbrakeVal();
   const ts=timeScale;
   const abT = 1-(1-ab)*ts;
+
+  // ── Tick attack timer; apply hit at the correct frame ─────────────────────
+  if(pl.attackTimer > 0){
+    pl.attackTimer--;
+    // The animation window is the top of the countdown
+    const frameInSwing = ATTACK_COOLDOWN - pl.attackTimer;
+    if(frameInSwing === ATTACK_HIT_FRAME && !pl.attackHitDealt){
+      pl.attackHitDealt = true;
+      checkAttackHits(s);
+    }
+  }
+  updateAttackBtnUI();
 
   if(pl.vy>0) pl.fallVy=Math.max(pl.fallVy,pl.vy);
   pl.vy+=grav*ts;
@@ -920,18 +994,12 @@ function update(s){
   updatePlants(s);
   updateBats(s);
 
-  // ── Dynamic camera: pan to show more map above/below at height thresholds ──
-  // Between -300 and 300 the default 40% offset is used. Beyond those thresholds
-  // the offset gradually shifts (up to +/-13% of screen height) so the player
-  // can see further in the direction they are travelling.
   let camLookOffset = H * 0.4;
   const curScore = Math.floor(-pl.y / 10);
   if (curScore > 300) {
-    // Ascending: shift camera up so more of the castle above is visible
     const t = Math.min(1, (curScore - 300) / 600);
     camLookOffset += t * H * 0.13;
   } else if (curScore < -300) {
-    // Descending: shift camera down so more of the castle below is visible
     const t = Math.min(1, (-curScore - 300) / 600);
     camLookOffset -= t * H * 0.13;
   }
@@ -1247,19 +1315,16 @@ function drawMushrooms(){
 // ── Carnivorous Plant drawing ─────────────────────────────────────────────────
 function drawPlants(){
   for(const plant of S.plants){
-    // Base anchor in screen space
     const bsy = (plant.y - S.cam)|0;
     if(bsy < -120 || bsy > H + 30) continue;
     const bsx = plant.x|0;
 
-    // Head position in screen space
     const hsx = plant.headX|0;
     const hsy = (plant.headY - S.cam)|0;
 
     const open    = plant.mouthOpen;
     const density = Math.min(1, (plant.absScore - PLANT_START) / (PLANT_FULL - PLANT_START));
 
-    // ── Danger glow (at head position) ──────────────────────────────────────
     if(plant.state === 'snapping' || plant.state === 'closed'){
       const gAlpha = plant.state === 'closed' ? 0.28 : 0.12 + 0.14*(1-open);
       const gr = ctx.createRadialGradient(hsx, hsy - 4, 0, hsx, hsy - 4, 28);
@@ -1269,7 +1334,6 @@ function drawPlants(){
       ctx.beginPath(); ctx.arc(hsx, hsy - 4, 28, 0, Math.PI*2); ctx.fill();
     }
 
-    // ── Curved segmented stem from base to head ─────────────────────────────
     {
       const stemSegs = 7;
       const dx = hsx - bsx, dy = hsy - bsy;
@@ -1318,7 +1382,6 @@ function drawPlants(){
       ctx.fillRect(leafX + leafDir*1, leafY - 1, 6*leafDir, 1);
     }
 
-    // ── Head ────────────────────────────────────────────────────────────────
     const jawGap = (open * 12)|0;
     const loY = hsy;
     const upY = loY - jawGap - 12;
@@ -1470,12 +1533,64 @@ function drawTimeSlowOverlay(){
   ctx.fillText(`⏳ -${slowPctLabel}% TIME`, WALL+6, 28);
 }
 
+// ── Attack radius arc (drawn around knight during swing) ─────────────────────
+function drawAttackArc(pl, swingProgress){
+  // swingProgress: 0..1, peaks at 0.5
+  const sx = pl.x|0;
+  const sy = (pl.y - S.cam)|0;
+  const bloom = Math.sin(swingProgress * Math.PI);   // 0→1→0
+
+  // Faint radius ring
+  ctx.save();
+  ctx.globalAlpha = bloom * 0.18;
+  ctx.strokeStyle = '#ffcc44';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4,5]);
+  ctx.beginPath();
+  ctx.arc(sx, sy, ATTACK_RADIUS, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Bright slash arc in the swing direction
+  const arcStart = -Math.PI * 0.85 + swingProgress * Math.PI * 1.5;
+  const arcEnd   = arcStart + Math.PI * 0.55;
+  ctx.globalAlpha = bloom * 0.75;
+  ctx.strokeStyle = '#fff8aa';
+  ctx.lineWidth   = 3;
+  ctx.beginPath();
+  ctx.arc(sx, sy, ATTACK_RADIUS * 0.72, arcStart, arcEnd);
+  ctx.stroke();
+
+  // Bright tip dot
+  const tipAngle = arcStart + (arcEnd - arcStart) * 0.5;
+  const tx2 = sx + Math.cos(tipAngle) * ATTACK_RADIUS * 0.72;
+  const ty2 = sy + Math.sin(tipAngle) * ATTACK_RADIUS * 0.72;
+  ctx.globalAlpha = bloom * 0.9;
+  ctx.fillStyle   = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(tx2, ty2, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ── Knight (modified to animate sword swing) ─────────────────────────────────
 function drawKnight(){
   const pl=S.pl;
   const flash=pl.damageFlash>0&&Math.floor(pl.damageFlash/4)%2===0;
   if(flash) ctx.globalAlpha=0.35;
   const x=(pl.x-pl.w/2)|0,y=(pl.y-pl.h/2-S.cam)|0,w=pl.w,h=pl.h;
   const moving=Math.abs(pl.vx)>0.5,legOff=pl.onG&&moving?Math.sin(S.tick*0.3)*3:0;
+
+  // ── Determine attack animation state ──────────────────────────────────────
+  // attackTimer counts down from ATTACK_COOLDOWN; swing happens in the first ATTACK_DURATION frames
+  const frameInSwing = ATTACK_COOLDOWN - pl.attackTimer;
+  const isSwinging   = pl.attackTimer > 0 && frameInSwing <= ATTACK_DURATION;
+  const swingProgress = isSwinging ? frameInSwing / ATTACK_DURATION : 0;  // 0..1
+
+  // Draw the arc effect first (behind the knight)
+  if(isSwinging) drawAttackArc(pl, swingProgress);
+
   ctx.fillStyle='rgba(0,0,0,0.25)';ctx.beginPath();ctx.ellipse(x+w/2,y+h+3,w/2-2,4,0,0,Math.PI*2);ctx.fill();
   ctx.fillStyle='#555566';ctx.fillRect(x+2,y+h-8,6,8+legOff);ctx.fillRect(x+w-8,y+h-8,6,8-legOff);
   ctx.fillStyle='#8888aa';ctx.fillRect(x+3,y+h-7,4,2);ctx.fillRect(x+w-7,y+h-7,4,2);
@@ -1497,12 +1612,36 @@ function drawKnight(){
   ctx.fillStyle='#8b0000';ctx.fillRect(x-5,y+10,7,12);
   ctx.fillStyle='#cc2222';ctx.fillRect(x-4,y+11,5,10);
   ctx.fillStyle='#ffcc00';ctx.fillRect(x-2,y+14,1,4);ctx.fillRect(x-4,y+16,5,1);
-  ctx.save();ctx.translate(x+w+2,y+12);ctx.rotate(pl.onG?0.2:-0.6);
+
+  // ── Sword — rotated during swing ─────────────────────────────────────────
+  ctx.save();
+  ctx.translate(x+w+2, y+12);
+  let swordAngle;
+  if(isSwinging){
+    // Sweep from raised-behind (-1.6 rad) to extended-forward (1.0 rad)
+    const easedT = swingProgress < 0.5
+      ? 2 * swingProgress * swingProgress
+      : 1 - Math.pow(-2 * swingProgress + 2, 2) / 2;
+    swordAngle = -1.6 + easedT * 2.6;
+  } else {
+    swordAngle = pl.onG ? 0.2 : -0.6;
+  }
+  ctx.rotate(swordAngle);
+
+  // Draw sword with glow during swing
+  if(isSwinging){
+    const glow = Math.sin(swingProgress * Math.PI);
+    ctx.shadowColor  = `rgba(255,220,80,${glow * 0.9})`;
+    ctx.shadowBlur   = 8;
+  }
   ctx.fillStyle='#aabbcc';ctx.fillRect(-1,-14,2,14);
   ctx.fillStyle='#888';ctx.fillRect(-1,0,2,4);
   ctx.fillStyle='#cc9900';ctx.fillRect(-4,-1,8,2);
   ctx.fillStyle='#eee';ctx.fillRect(0,-14,1,10);
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur  = 0;
   ctx.restore();
+
   if(flash) ctx.globalAlpha=1;
   const aj=pl.airJumpsLeft;
   if(aj>0&&!pl.onG){
@@ -1705,6 +1844,7 @@ function dieAndShowGO(){
 }
 function showGO(s){
   document.getElementById('pausebtn').style.display='none';
+  document.getElementById('attackbtn').style.display='none';
   document.getElementById('go-title').textContent=s.pl.hp<=0?'💀 FALLEN 💀':'⚔ SLAIN ⚔';
   document.getElementById('go-stats').textContent='FLOOR: '+s.score+'   ⚜ '+s.session_coins+'   BEST: '+best+' / '+lowest;
   renderShop('go');document.getElementById('go').style.display='block';
@@ -1778,6 +1918,7 @@ function restart(){
   document.getElementById('pausemenu').style.display='none';
   document.getElementById('pausebtn').style.display='flex';
   document.getElementById('pausebtn').textContent='⏸';
+  document.getElementById('attackbtn').style.display='flex';
   document.getElementById('hint').style.display='block';
   updateHeartsUI(S.pl);
 }
@@ -1797,6 +1938,7 @@ function restart(){
   document.getElementById('coindisp').textContent='⚜ '+totalCoins;
   document.getElementById('best').textContent='BEST: '+best+' / '+lowest;
   S=mkS(save&&save.pos?save.pos:null);
+  document.getElementById('attackbtn').style.display='flex';
   updateCheckpointUI();
   updateHeartsUI(S.pl);
   frame();
