@@ -56,12 +56,10 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 .upg-name { font-size:11px; color:#f0dfa0; letter-spacing:1px; }
 .upg-desc { font-size:9px; color:#886644; margin-top:1px; }
 .upg-lvl { font-size:9px; color:#88cc88; margin-top:1px; }
-/* Button group: buy on top, sell below */
 .upg-btn-group { display:flex; flex-direction:column; gap:3px; }
 .upg-btn { background:#2a1f0a; border:2px solid #886633; color:#ffdd00; font-family:monospace; font-size:10px; padding:4px 8px; cursor:pointer; white-space:nowrap; min-width:64px; text-align:center; }
 .upg-btn:hover { background:#443311; border-color:#ffdd00; }
 .upg-btn.cant { border-color:#333; color:#555; cursor:default; }
-/* Sell button style */
 .sell-btn { background:#1a0a08; border:2px solid #884422; color:#ff9966; }
 .sell-btn:hover { background:#2a1208; border-color:#ff6633; color:#ffcc99; }
 .sell-btn.cant { border-color:#2a1a14; color:#442211; cursor:default; background:#100806; }
@@ -114,11 +112,10 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
 </div><!-- #game-wrap -->
 
 <script>
-// ── Crash guard (helps catch “freezes” that are actually exceptions) ─────────
 window.addEventListener('error', (e) => {
   try{
     console.error('GAME ERROR:', e.message, e.filename, e.lineno, e.colno, e.error);
-  }catch(_){/* noop */}
+  }catch(_){}
 });
 
 const C=document.getElementById('c'),ctx=C.getContext('2d');
@@ -151,7 +148,6 @@ function toggleFS(){
 );
 const SAVE_KEY='castle_climber_save_v2';
 
-// ── Upgrades ─────────────────────────────────────────────────────────────────
 const UPGRADES=[
   {id:'power',    name:'TREBUCHET ARM',    desc:'Mightier launch force',                    icon:'⚔', base:15,  inc:0.9,   baseCost:24,  costMult:1.65},
   {id:'preview',  name:'WIZARD SIGHT',     desc:'Longer trajectory preview arc',            icon:'🔮',base:2,   inc:1.5,   baseCost:16,  costMult:1.3},
@@ -160,11 +156,6 @@ const UPGRADES=[
   {id:'bounce',   name:'RUNED GAUNTLETS',  desc:'Rebound harder off castle walls',          icon:'💎',base:0.6, inc:0.08,  baseCost:16,  costMult:1.45},
   {id:'coinmag',  name:'GILDED AURA',      desc:'Gold is drawn to thee from afar',          icon:'⚜', base:14,  inc:6,     baseCost:12,  costMult:1.4},
   {id:'coinrate', name:'FORTUNE BLESSING', desc:'More gold coins float through the castle', icon:'🪙',base:1.0, inc:0.4,   baseCost:20,  costMult:1.55},
-  // ── NEW: replaced SQUIRE'S GRACE (coyote) with HOURGLASS RUNE (time slow) ──
-  // Coyote time is now a fixed built-in mechanic (3 frames) rather than an upgrade.
-  // Each rank of HOURGLASS RUNE adds 5% speed reduction and 0.5s of slow duration
-  // when the player begins dragging to aim a jump. Time snaps back the instant
-  // the finger/mouse is released and the launch fires.
   {id:'timeslow', name:'HOURGLASS RUNE',   desc:'Time slows while aiming — more ranks = slower & longer',
                                                                                              icon:'⏳',base:0,   inc:1,     baseCost:28,  costMult:1.45, maxLvl:10},
   {id:'airbrake', name:'CAPE OF CONTROL',  desc:'Thy cloak steadies thine arc',             icon:'🧣',base:1.0, inc:-0.03, baseCost:16,  costMult:1.4},
@@ -175,9 +166,6 @@ const UPGRADES=[
   {id:'batradius',name:'WARDING SIGIL',    desc:'Bats cannot agro within a wider radius',   icon:'🔯',base:80,  inc:25,    baseCost:18,  costMult:1.3},
   {id:'heartrate',name:'BLESSED GROUNDS',  desc:'Hearts of healing appear more often',      icon:'💖',base:0.04,inc:0.025, baseCost:24,  costMult:1.4},
   {id:'sporeres', name:'SPORE WARD',       desc:'Thy armor filters the toxic miasma longer',icon:'🍄',base:70,  inc:25,    baseCost:20,  costMult:1.4},
-
-  // ── Checkpoints ──────────────────────────────────────────────────────────
-  // Each rank unlocks one checkpoint tier (1000 floors per tier) in that direction.
   {id:'cp_up',   name:'CHECKPOINT BANNER (UP)',   desc:'Unlock upward checkpoints (every 1000 floors)',   icon:'▶', base:0, inc:1, baseCost:1000, costMult:1.0},
   {id:'cp_down', name:'CHECKPOINT BANNER (DOWN)', desc:'Unlock downward checkpoints (every 1000 floors)', icon:'◀', base:0, inc:1, baseCost:1000, costMult:1.0},
 ];
@@ -189,13 +177,9 @@ let totalCoins=0,best=0,lowest=0;
 function upgVal(id){const u=UPGRADES.find(x=>x.id===id);return u.base+upgLevels[id]*u.inc;}
 function upgCost(id){
   const u=UPGRADES.find(x=>x.id===id);
-  // Checkpoints have linear pricing: 1000, 2000, 3000... per tier
   if(id==='cp_up'||id==='cp_down') return 1000*(upgLevels[id]+1);
   return Math.ceil(u.baseCost*Math.pow(u.costMult,upgLevels[id]));
 }
-
-// Sell price = half of what was paid for the most recent rank.
-// Cost paid for rank N was upgCost at level N-1, i.e. baseCost * mult^(N-1).
 function upgSellPrice(id){
   const lvl=upgLevels[id];
   if(lvl<=0) return 0;
@@ -203,10 +187,6 @@ function upgSellPrice(id){
   return Math.floor(Math.ceil(u.baseCost*Math.pow(u.costMult,lvl-1))/2);
 }
 
-
-// ── Checkpoint gating ───────────────────────────────────────────────────────
-// To buy checkpoint tier N (rank N), the player must have already reached it.
-// Up direction uses `best` (highest positive floor). Down uses `lowest` (most negative floor).
 function checkpointTierReq(id, tier){
   const floors = tier*1000;
   if(id==='cp_up')   return {ok: best   >= floors, need: floors, dir: 'up'};
@@ -224,35 +204,25 @@ function batAgroRadius(){return Math.min(upgVal('batradius'), H*0.45);}
 function heartSpawnRate(){return upgVal('heartrate');}
 function sporeToleranceVal(){return upgVal('sporeres');}
 
-// ── Time Slow helpers ─────────────────────────────────────────────────────────
-// Level L gives: slow% = 25 + (L-1)*5,  duration = 60 + (L-1)*30 real frames
-// timeScale 1.0 = normal, 0.75 = 25% slow, etc.
 function timeSlowScale(){
   const lvl=upgLevels['timeslow'];
   if(lvl<=0) return 1.0;
-  const slowPct=0.25+(lvl-1)*0.05;        // 0.25 → 0.70 across 10 levels
+  const slowPct=0.25+(lvl-1)*0.05;
   return Math.max(0.30, 1.0-slowPct);
 }
 function timeSlowDuration(){
   const lvl=upgLevels['timeslow'];
   if(lvl<=0) return 0;
-  return 60+(lvl-1)*30;                   // frames: 60, 90, 120 … 330
+  return 60+(lvl-1)*30;
 }
 
-// Mushroom spawn density scales with depth, starting mild and peaking around floor 4500.
 const MUSH_START = 150;
 const MUSH_FULL  = 4500;
 const MUSH_MAX_DENSITY = 0.38;
 
-// ── Time-slow state ───────────────────────────────────────────────────────────
-// timeScale < 1.0 = bullet-time. Applied inside update() to physics deltas so
-// update() still runs EVERY frame — animations never freeze. The accumulator
-// approach (skipping update() some frames) caused visible stuttering because
-// S.tick only advanced when update() ran, locking all animations in place.
-let timeScale=1.0;       // current game speed multiplier (1=normal, <1=slowed)
-let timeSlowTimer=0;     // real frames remaining before slow expires
+let timeScale=1.0;
+let timeSlowTimer=0;
 
-// ── Persistence ───────────────────────────────────────────────────────────────
 function saveGame(s){
   try{
     localStorage.setItem(SAVE_KEY,JSON.stringify({
@@ -269,10 +239,8 @@ function wipeSave(){
 }
 function confirmWipe(){if(confirm('Wipe all progress? This cannot be undone.')){wipeSave();restart();}}
 
-// ── State ─────────────────────────────────────────────────────────────────────
 let S,drag=null,floats=[],paused=false,saveTimer=0;
 
-// ── Checkpoints (run-start selection) ──────────────────────────────────────
 let checkpointPhase=true;
 let cpSelUp=1, cpSelDown=1;
 function ownedCPTiers(dir){return dir>0?(upgLevels['cp_up']|0):(upgLevels['cp_down']|0);}
@@ -282,15 +250,13 @@ function updateCheckpointUI(){
   const upOwned=ownedCPTiers(1);
   const dnOwned=ownedCPTiers(-1);
   const show=checkpointPhase && S && S.alive;
-
-  // Show actual floor for clarity: tier N = N*1000 floors
   if(upBtn){
     upBtn.style.display = (show && upOwned>0)?'flex':'none';
-        upBtn.textContent = '▲';
+    upBtn.textContent = '▲';
   }
   if(dnBtn){
     dnBtn.style.display = (show && dnOwned>0)?'flex':'none';
-        dnBtn.textContent = '▼';
+    dnBtn.textContent = '▼';
   }
 }
 function cycleCheckpoint(dir){
@@ -302,41 +268,32 @@ function cycleCheckpoint(dir){
   updateCheckpointUI();
 }
 function teleportToCheckpoint(dir, tier){
-  // tier is in 1000-floor increments.
-  const targetScore = dir * tier * 1000; // floors
-  const targetY = -targetScore * 10;     // world y (score = floor(-y/10))
+  const targetScore = dir * tier * 1000;
+  const targetY = -targetScore * 10;
   const px = W/2;
   const platY = targetY + 12;
   const id = platId(platY);
-  // Ensure a checkpoint platform exists
   let p = S.plats.find(pp=>pp.id===id);
   if(!p){
     p={x:px-55,y:platY,w:110,h:14,icy:false,torch:false,id};
     S.plats.push(p);
   }
   p.checkpoint=true;
-  // Move player
   S.pl.x=px; S.pl.y=targetY-20; S.pl.vx=0; S.pl.vy=0;
   S.pl.onG=false; S.pl.coyote=0; S.pl.fallVy=0;
-  // Recenter camera and (re)generate nearby content
   S.cam = S.pl.y - H*0.38;
   gen(S); cull(S); gen(S); cull(S);
   floats=[]; drag=null;
 }
 
-
 function hashY(y){let h=Math.sin(y*127.1+311.7)*43758.5453;return h-Math.floor(h);}
 function hash2(a,b){let h=Math.sin(a*127.1+b*311.7+92.3)*43758.5453;return h-Math.floor(h);}
 
-// ── Spike helpers ─────────────────────────────────────────────────────────────
 const SPIKE_START = 300;
 const SPIKE_FULL  = 8000;
 const SPIKE_SLOT  = 13;
 const SPIKE_MAX_FILL = 0.88;
 
-
-// Returns deterministic mushroom X on a given platform if a mushroom *would* spawn there, else null.
-// This mirrors tryPlaceMushroom() logic so spikes can avoid overlapping hidden hazards.
 function mushroomXForPlat(p){
   const absScore = Math.abs(p.y) / 10;
   if(absScore < MUSH_START) return null;
@@ -356,14 +313,10 @@ function getPlatSpikes(p) {
   for (let i = 0; i < slots; i++) {
     if (hash2(p.id * 97 + i, 77) < fillChance) {
       const sx = p.x + 2 + SPIKE_SLOT * 0.5 + i * SPIKE_SLOT;
-
-      // Avoid spawning spikes directly in front of torches or mushrooms (hidden/unfair hazards).
       const torchX = p.torch ? (p.x + p.w/2) : null;
       const mushX  = mushroomXForPlat(p);
-
       const nearTorch = (torchX !== null) && Math.abs(sx - torchX) < 10;
       const nearMush  = (mushX  !== null) && Math.abs(sx - mushX)  < 10;
-
       if(!nearTorch && !nearMush) spikes.push(sx);
     }
   }
@@ -384,7 +337,6 @@ function checkSpikeCollision(s) {
     for (const sx of spikes) {
       if (plR > sx - 4 && plL < sx + 4) {
         takeDamage(s, 1, '🩸 SPIKED!');
-        // Stronger knockback so the player doesn't sit on the spike and get re-hit.
         pl.vy = Math.min(pl.vy, -2.6);
         const dir = (pl.x < sx) ? -1 : 1;
         pl.spikeDir = dir;
@@ -523,7 +475,6 @@ function addFloat(x,sy,text,color){floats.push({x,y:sy,vy:-1.4,life:55,text,colo
 const FALL_THRESH=22;
 const FALL_SEVERE=34;
 
-// ── Mushrooms ─────────────────────────────────────────────────────────────────
 const CLOUD_RADIUS   = 30;
 const CLOUD_DURATION = 160;
 const PUFF_MIN       = 200;
@@ -561,7 +512,6 @@ function updateMushrooms(s){
   }
 }
 
-// ── Bats ──────────────────────────────────────────────────────────────────────
 const BAT_AGRO_RATE=0.025,BAT_AGRO_PERIOD=360,BAT_DIVE_SPEED=3.5,BAT_IDLE_SPEED=0.8;
 
 function updateBats(s){
@@ -571,7 +521,7 @@ function updateBats(s){
   const agroRate=Math.min(0.18, BAT_AGRO_RATE*scale);
   const ts=timeScale;
   for(const bt of s.bats){
-    bt.flap+=0.14;  // flap stays real-time so wing animation is always smooth
+    bt.flap+=0.14;
     if(bt.hurtTimer>0) bt.hurtTimer--;
     if(bt.state==='idle'){
       bt.x+=bt.vx*ts;
@@ -610,18 +560,12 @@ function updateBats(s){
   }
 }
 
-// ── Update ────────────────────────────────────────────────────────────────────
 function update(s){
   s.tick++;
   const pl=s.pl,prevY=pl.y,prevX=pl.x;
   const grav=gravVal(),ab=airbrakeVal();
-  // timeScale is applied to all positional deltas and gravity accumulation so
-  // the game literally runs in slow motion while still calling update() every
-  // frame. This keeps S.tick advancing smoothly so animations never stutter.
-  // Friction/airbrake are per-frame multipliers; we interpolate them toward 1.0
-  // by timeScale so they don't over-damp at low speeds.
   const ts=timeScale;
-  const abT = 1-(1-ab)*ts;   // airbrake scaled: ts=1 → ab, ts=0 → 1 (no drag)
+  const abT = 1-(1-ab)*ts;
 
   if(pl.vy>0) pl.fallVy=Math.max(pl.fallVy,pl.vy);
   pl.vy+=grav*ts;
@@ -630,11 +574,9 @@ function update(s){
   if(pl.hurtTimer>0) pl.hurtTimer--;
   if(pl.damageFlash>0) pl.damageFlash--;
 
-  // If recently spiked, keep nudging the player sideways so they clear the hitbox.
   if(pl.spikeKnock>0){
     pl.spikeKnock--;
     const d=pl.spikeDir||1;
-    // Ensure some lateral motion even if airbrake is damping
     pl.vx = d * Math.max(Math.abs(pl.vx), 1.4);
     pl.x += d * 0.7;
   }
@@ -643,8 +585,6 @@ function update(s){
   if(pl.x-pl.w/2<WALL){pl.x=WALL+pl.w/2;pl.vx=Math.abs(pl.vx)*bounce;}
   if(pl.x+pl.w/2>W-WALL){pl.x=W-WALL-pl.w/2;pl.vx=-Math.abs(pl.vx)*bounce;}
 
-  // Coyote time is now a fixed 3-frame built-in grace period; no longer an upgrade.
-  // The HOURGLASS RUNE fills the strategic slot vacated by SQUIRE'S GRACE.
   if(pl.onG){pl.coyote=3;pl.airJumpsLeft=maxAirJumps();}
   else if(pl.coyote>0) pl.coyote--;
   pl.onG=false;
@@ -746,7 +686,6 @@ function updateHeartsUI(pl){
   document.getElementById('hearts').textContent=h;
 }
 
-// ── Input ─────────────────────────────────────────────────────────────────────
 function xy(e){const r=C.getBoundingClientRect(),t=e.touches?(e.touches[0]||e.changedTouches[0]):e;return{x:(t.clientX-r.left)/SC,y:(t.clientY-r.top)/SC};}
 C.addEventListener('touchstart',e=>{e.preventDefault();if(!paused)dn(xy(e));},{passive:false});
 C.addEventListener('touchmove',e=>{e.preventDefault();if(!paused)mv(xy(e));},{passive:false});
@@ -761,9 +700,6 @@ function dn(p){
   if(!S.alive)return;
   drag={sx:p.x,sy:p.y,cx:p.x,cy:p.y};
   document.getElementById('hint').style.display='none';
-  // ── Activate time slow on drag start ────────────────────────────────────────
-  // Only engage if the player has the upgrade and can actually fire a shot.
-  // This prevents the effect triggering on accidental taps the player can't use.
   const lvl=upgLevels['timeslow'];
   if(lvl>0){
     timeScale=timeSlowScale();
@@ -774,8 +710,6 @@ function dn(p){
 function mv(p){if(drag)drag={...drag,cx:p.x,cy:p.y};}
 
 function up(){
-  // ── Restore normal speed the instant the player releases / fires ─────────
-  // This makes time-slow feel responsive: snaps back immediately, not gradually.
   timeScale=1.0;
   timeSlowTimer=0;
 
@@ -791,13 +725,9 @@ function up(){
   S.pl.onG=false;drag=null;
 }
 
-// ── Trajectory simulation ─────────────────────────────────────────────────────
 const BOUNCE_COLORS=[[255,200,80],[80,200,255],[180,80,255],[80,255,120],[255,140,40]];
 
 function simTrajectory(sx,sy,vx0,vy0,totalSteps){
-  // Preview must mirror *actual* collision rules, especially on top-of-platform
-  // landings where IRON SABATONS (friction) applies. The live physics does NOT
-  // bounce upward on a clean top landing — it zeroes vy and applies friction.
   const grav=gravVal(),ab=airbrakeVal(),bc=bounceVal();
   const hw=9,hh=12;
 
@@ -809,15 +739,12 @@ function simTrajectory(sx,sy,vx0,vy0,totalSteps){
   for(let i=0;i<totalSteps;i++){
     const ptx=tx,pty=ty;
 
-    // Integrate
     if(onG && gPlat){
       const lf=gPlat.icy?0.99:frictionVal();
       tvx*=lf;
       tx+=tvx;
       ty=gPlat.y-hh;
       tvy=0;
-
-      // If we've slid off the platform, go back to airborne integration next step.
       if(tx+hw<=gPlat.x || tx-hw>=gPlat.x+gPlat.w){
         onG=false; gPlat=null;
       }
@@ -830,11 +757,9 @@ function simTrajectory(sx,sy,vx0,vy0,totalSteps){
 
     let hit=false;
 
-    // Walls always apply (even if sliding)
     if(tx-hw<=WALL){tx=WALL+hw;tvx=Math.abs(tvx)*bc;hit=true;onG=false;gPlat=null;}
     else if(tx+hw>=W-WALL){tx=W-WALL-hw;tvx=-Math.abs(tvx)*bc;hit=true;onG=false;gPlat=null;}
 
-    // Platforms (only when airborne; when onG we already constrain to gPlat)
     if(!onG && !hit){
       for(const p of S.plats){
         const pR=p.x+p.w,pB=p.y+p.h;
@@ -844,27 +769,22 @@ function simTrajectory(sx,sy,vx0,vy0,totalSteps){
         const fromLeft=(ptx+hw)<=p.x,fromRight=(ptx-hw)>=pR;
 
         if(fromTop){
-          // Match update(): land, zero vy, apply platform friction (incl. icy).
           ty=p.y-hh;
           tvy=0;
           const lf=p.icy?0.99:frictionVal();
           tvx*=lf;
-
           onG=true; gPlat=p;
-          // If we're basically at rest, the trajectory ends here.
           if(Math.abs(tvx)<0.15){
             segs[segs.length-1].dots.push({x:tx,y:ty});
             if(segs[segs.length-1].dots.length===0) segs.pop();
             return segs;
           }
-          // Not a "bounce" segment split; keep drawing the sliding path.
           hit=false;
         }
         else if(fromBot){ty=pB+hh;tvy=Math.abs(tvy)*0.3;hit=true;}
         else if(fromLeft){tx=p.x-hw;tvx=-Math.abs(tvx)*bc;hit=true;}
         else if(fromRight){tx=pR+hw;tvx=Math.abs(tvx)*bc;hit=true;}
         else{
-          // Fallback: treat as top landing to stay conservative and match gameplay feel.
           ty=p.y-hh;
           tvy=0;
           const lf=p.icy?0.99:frictionVal();
@@ -878,8 +798,6 @@ function simTrajectory(sx,sy,vx0,vy0,totalSteps){
 
     segs[segs.length-1].dots.push({x:tx,y:ty});
 
-    // Only split trajectory segments on *true bounces* (walls / side / bottom hits),
-    // not on top landings that become ground-slides.
     if(hit){
       segs[segs.length-1].bounced=true;
       segs.push({dots:[],bounced:false,bi:segs.length});
@@ -889,7 +807,6 @@ function simTrajectory(sx,sy,vx0,vy0,totalSteps){
   if(segs[segs.length-1].dots.length===0) segs.pop();
   return segs;
 }
-
 
 // ── Draw ──────────────────────────────────────────────────────────────────────
 
@@ -904,16 +821,13 @@ function drawCastleWall(){
       const bx=Math.round(col*bW+off);
       if(bx+bW<0||bx>W||wy+bH<0||wy>H) continue;
 
-      // Brick tile base
       ctx.fillStyle=shade;
       ctx.fillRect(bx,wy,bW-2,bH-2);
 
-      // Mortar / seams
       ctx.fillStyle='#141210';
       ctx.fillRect(bx,wy+bH-2,bW,2);
       ctx.fillRect(bx+bW-2,wy,2,bH);
 
-      // Small pockmarks / chips
       const h0=hash2(row,col);
       if(h0<0.14){
         ctx.fillStyle='rgba(0,0,0,0.18)';
@@ -922,126 +836,128 @@ function drawCastleWall(){
         if(h0<0.11) ctx.fillRect(px+3,py+4,1,1);
       }
 
-      // Window slits + larger windows (deterministic)
       const hw=hash2(row*3, col*7);
       const wx=bx+10+((hash2(row,col*13)*10)|0);
 
-      // Helper: avoid placing windows where they would clip into side walls or intersect platforms
+      // Helper: avoid placing windows where they clip into side walls or platforms
       const winBlocked=(x0,y0,w0,h0)=>{
         if(x0 < WALL+6 || x0+w0 > W-WALL-6) return true;
         for(const p of S.plats){
-          // world-space overlap test with a small margin
           if(x0+w0 > p.x-2 && x0 < p.x+p.w+2 && y0+h0 > p.y-2 && y0 < p.y+p.h+2) return true;
         }
         return false;
       };
 
-      // Small slit (about 3× less common)
+      // Small arrow-slit window
       if(hw < 0.0267){
-        // avoid slits near walls or behind platforms
         const slitWorldX = wx;
         const slitWorldY = row*bH + 4;
         if(!winBlocked(slitWorldX-1, slitWorldY, 3, 8)){
           ctx.fillStyle='#0e0c0a';
           ctx.fillRect(wx,wy+4,1,6);
-          // subtle rim highlight
           ctx.fillStyle='rgba(120,100,70,0.16)';
           ctx.fillRect(wx-1,wy+4,1,6);
         }
       }
-      // Larger arched window (about 3× less common, ~3× bigger)
-      else if(hw > 0.9973){
-        const cx=(bx + (bW>>1))|0;
-        const w=24,h=30, top=(wy+2)|0;
+      // ── Gothic arched window ──────────────────────────────────────────────
+      // Increased frequency (0.55% of bricks vs old 0.27%) so windows actually
+      // show up in the game.  Complete rewrite to fix the arch/body width mismatch
+      // and missing stone-frame sides that plagued the old version.
+      else if(hw > 0.9945){
+        const cx=(bx+(bW>>1))|0;
 
-        const winWorldX = cx-(w>>1);
-        const winWorldY = row*bH + 2;
-        if(!winBlocked(winWorldX, winWorldY, w, h)){
-// glow (warm candlelight) — larger but rarer gothic window
-const glow = Math.min(0.30, 0.08 + (Math.min(1,Math.abs(S.score)/5200))*0.22);
-const g=ctx.createRadialGradient(cx,top+18,0,cx,top+18,62);
-g.addColorStop(0,`rgba(255,220,120,${glow})`);
-g.addColorStop(1,'rgba(255,150,40,0)');
-ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,top+18,66,0,Math.PI*2); ctx.fill();
+        // Window dimensions (all in screen pixels)
+        const WW=24, WH=34;   // total size including stone frame
+        const ARCH_H=13;       // rows for the pointed-arch top
+        const FR=2;            // stone frame thickness on sides & bottom
+        const iw=WW-FR*2;      // interior width (20px)
 
-// ── Gothic window (pointed arch + tracery + diamond leaded glass) ──
-const x0 = cx-(w>>1), y0 = top;
-const archH = 10;                 // height of the pointed arch portion
-const bodyY = y0 + archH;         // start of rectangular body
-const bodyH = h - archH;
+        const wx0=(cx-(WW>>1))|0;  // frame left edge
+        const wy0=(wy+1)|0;         // frame top edge
 
-// Outer stone frame (warm sandstone)
-ctx.fillStyle = '#3a332c';
-// sides + sill
-ctx.fillRect(x0-1, bodyY, 1, bodyH+1);
-ctx.fillRect(x0+w, bodyY, 1, bodyH+1);
-ctx.fillRect(x0-1, y0+h, w+2, 1);
+        const ix0=wx0+FR;           // interior left edge
+        const bodyY=wy0+ARCH_H;     // y where rectangular glass body begins
+        const bodyH=WH-ARCH_H-FR;  // glass body height (bottom stone eats FR px)
 
-// stepped pointed arch (outer)
-ctx.fillRect(cx-8, y0+archH-1, 16, 1);
-ctx.fillRect(cx-7, y0+archH-2, 14, 1);
-ctx.fillRect(cx-6, y0+archH-3, 12, 1);
-ctx.fillRect(cx-5, y0+archH-4, 10, 1);
-ctx.fillRect(cx-4, y0+archH-5,  8, 1);
-ctx.fillRect(cx-3, y0+archH-6,  6, 1);
-ctx.fillRect(cx-2, y0+archH-7,  4, 1);
-ctx.fillRect(cx-1, y0+archH-8,  2, 1);
-ctx.fillRect(cx-1, y0+archH-9,  2, 1);
+        // World-space coords for the overlap/wall check
+        if(!winBlocked(wx0, row*bH+1, WW, WH)){
 
-// Stone highlight (subtle)
-ctx.fillStyle = 'rgba(210,190,150,0.18)';
-ctx.fillRect(x0-1, bodyY, 1, bodyH);
-ctx.fillRect(cx-8, y0+archH-2, 16, 1);
+          // Subtle per-window flicker so each window feels alive independently
+          const pulse=0.78+0.22*Math.sin(S.tick*0.11+bx*0.31);
+          const glowA=(0.09+Math.min(0.20,Math.abs(S.score)/4800*0.20))*pulse;
 
-// Inner void (glass area)
-ctx.fillStyle = '#0b0d12';
-// body
-ctx.fillRect(x0, bodyY, w, bodyH);
-// inner arch (pointed)
-ctx.fillRect(cx-7, y0+archH-2, 14, 1);
-ctx.fillRect(cx-6, y0+archH-3, 12, 1);
-ctx.fillRect(cx-5, y0+archH-4, 10, 1);
-ctx.fillRect(cx-4, y0+archH-5,  8, 1);
-ctx.fillRect(cx-3, y0+archH-6,  6, 1);
-ctx.fillRect(cx-2, y0+archH-7,  4, 1);
-ctx.fillRect(cx-1, y0+archH-8,  2, 1);
+          // 1. Warm candlelight glow radiating through the wall
+          const gl=ctx.createRadialGradient(cx,wy0+16,1,cx,wy0+16,44);
+          gl.addColorStop(0,`rgba(255,205,105,${glowA})`);
+          gl.addColorStop(1,'rgba(255,130,30,0)');
+          ctx.fillStyle=gl;
+          ctx.beginPath();ctx.arc(cx,wy0+16,46,0,Math.PI*2);ctx.fill();
 
-// Glass tint + interior glow
-const glassA = 0.25 + Math.min(0.18, Math.abs(S.score)/9000);
-ctx.fillStyle = `rgba(40,70,90,${glassA})`;
-ctx.fillRect(x0+1, bodyY+1, w-2, bodyH-2);
-ctx.fillStyle = `rgba(255,210,120,${0.10 + glow*0.55})`;
-ctx.fillRect(cx-2, bodyY+6, 4, 10);
-ctx.fillRect(cx-4, bodyY+12, 8, 6);
+          // 2. Stone surround — full rectangle, glass is carved out of this
+          ctx.fillStyle='#3d352c';
+          ctx.fillRect(wx0,wy0,WW,WH);
+          // Top-left bevel highlights (lighter edge)
+          ctx.fillStyle='#5a5046';
+          ctx.fillRect(wx0,wy0,WW,2);    // top edge
+          ctx.fillRect(wx0,wy0,2,WH);    // left edge
+          // Bottom-right shadow (darker edge)
+          ctx.fillStyle='#1c1812';
+          ctx.fillRect(wx0+WW-2,wy0,2,WH); // right edge
+          ctx.fillRect(wx0,wy0+WH-2,WW,2); // bottom edge
 
-// Lead lattice (diamond pattern)
-ctx.fillStyle = 'rgba(15,10,8,0.65)';
-const ix0 = x0+2, iy0 = y0+3, iw = w-4, ih = h-4;
-for(let yy=0; yy<ih; yy+=4){
-  for(let xx=0; xx<iw; xx+=4){
-    // little X stitch
-    const px = (ix0+xx + ((yy>>2)&1)*2)|0;
-    const py = (iy0+yy)|0;
-    ctx.fillRect(px,py,1,1);
-    ctx.fillRect(px+1,py+1,1,1);
-    ctx.fillRect(px+2,py+2,1,1);
-    ctx.fillRect(px+2,py,1,1);
-    ctx.fillRect(px+1,py+1,1,1);
-    ctx.fillRect(px,py+2,1,1);
-  }
-}
+          // 3. Glass void — dark interior, drawn in two passes:
+          //    a) pointed arch top, row by row from tip to base
+          //    b) rectangular body below the arch
+          ctx.fillStyle='#07090e';
 
-// Central mullion + horizontal bar (like the reference)
-ctx.fillStyle = 'rgba(30,22,18,0.55)';
-ctx.fillRect(cx, y0+5, 1, h-6);
-ctx.fillRect(x0+3, bodyY+10, w-6, 1);
+          // Rectangular glass body
+          ctx.fillRect(ix0,bodyY,iw,bodyH);
 
-// Tiny traceries at top (clover-ish hints)
-ctx.fillStyle = 'rgba(18,14,12,0.55)';
-ctx.fillRect(cx-3, y0+archH-6, 1, 2);
-ctx.fillRect(cx+2, y0+archH-6, 1, 2);
-ctx.fillRect(cx-1, y0+archH-7, 2, 1);
+          // Pointed arch: linearly widens from 2px at tip to iw at base.
+          // Using (& ~1) to keep each row an even number of pixels so the
+          // arch stays perfectly symmetric about cx.
+          for(let r=0;r<ARCH_H;r++){
+            const t=r/(ARCH_H-1);   // 0 = tip, 1 = base
+            const ow=((Math.round(2+(iw-2)*t))&~1);
+            if(ow>0) ctx.fillRect((cx-(ow>>1))|0, wy0+r, ow, 1);
+          }
 
+          // 4. Blue-grey glass tint over the interior (body + arch)
+          ctx.fillStyle='rgba(22,44,82,0.44)';
+          ctx.fillRect(ix0,bodyY,iw,bodyH);
+          for(let r=2;r<ARCH_H;r++){
+            const t=r/(ARCH_H-1);
+            const ow=Math.max(0,((Math.round(2+(iw-2)*t))&~1)-2);
+            if(ow>0){
+              ctx.fillStyle='rgba(22,44,82,0.36)';
+              ctx.fillRect((cx-(ow>>1))|0,wy0+r,ow,1);
+            }
+          }
+
+          // 5. Candlelight warmth pooling in the lower body
+          const cl=0.06+glowA*0.52;
+          ctx.fillStyle=`rgba(255,210,120,${cl})`;
+          ctx.fillRect((cx-3)|0,bodyY+3,6,9);
+          ctx.fillStyle=`rgba(255,235,165,${0.10+glowA*0.35})`;
+          ctx.fillRect((cx-1)|0,bodyY+4,2,6);
+
+          // 6. Glass reflection — pale highlight in top-left of body
+          ctx.fillStyle='rgba(148,195,232,0.11)';
+          ctx.fillRect(ix0+1,bodyY+1,Math.floor(iw*0.45),Math.floor(bodyH*0.40));
+
+          // 7. Lead tracery — thin dark lines dividing the glass panes
+          ctx.fillStyle='rgba(10,7,5,0.62)';
+          // Vertical mullion through body
+          ctx.fillRect(cx|0,bodyY+1,1,bodyH-2);
+          // Horizontal transom across body at ~43% height
+          ctx.fillRect(ix0+1,bodyY+Math.floor(bodyH*0.43),iw-2,1);
+          // Arch spine — single-pixel line from tip downward
+          ctx.fillRect(cx|0,wy0+1,1,ARCH_H-2);
+
+          // 8. Small rose-window circle hint at the very tip
+          ctx.fillStyle=`rgba(255,225,145,${0.20*pulse})`;
+          ctx.fillRect((cx-1)|0,wy0+1,3,2);
+          ctx.fillRect(cx|0,wy0,1,1);
         }
       }
     }
@@ -1060,7 +976,6 @@ function drawTorch(x,y){
   ctx.fillStyle='rgba(255,180,0,0.9)';ctx.beginPath();ctx.ellipse(x,y-1+fl*0.2,2.5,5,0,0,Math.PI*2);ctx.fill();
   ctx.fillStyle='rgba(255,255,180,0.8)';ctx.beginPath();ctx.ellipse(x,y+fl*0.1,1,3,0,0,Math.PI*2);ctx.fill();
 }
-
 
 function drawTorches(){
   for(const p of S.plats){
@@ -1091,45 +1006,30 @@ function drawPlatform(p){
     ctx.fillStyle='#445566';ctx.fillRect(px(p.x),sy,px(p.w),p.h);
     ctx.fillStyle='#7aaccc';ctx.fillRect(px(p.x),sy,px(p.w),4);
     ctx.fillStyle='#aaddee';ctx.fillRect(px(p.x),sy,px(p.w),2);
-
-    // frosty sparkles
     ctx.fillStyle='#cceeff';
     for(let i=6;i<p.w-4;i+=14) ctx.fillRect(px(p.x+i),sy+1,4,2);
-
-    // ice cracks (deterministic per platform)
     const h=hash2(p.id,17);
     ctx.fillStyle='rgba(230,250,255,0.18)';
     const c1=px(p.x+6 + h*(p.w-18));
     ctx.fillRect(c1,sy+4,1,5);
     ctx.fillRect(c1-3,sy+6,3,1);
     if(h>0.6){ ctx.fillRect(c1+1,sy+6,3,1); }
-
     ctx.fillStyle='rgba(180,230,255,0.12)';ctx.fillRect(px(p.x),sy,px(p.w),p.h);
     ctx.fillStyle='#334455';ctx.fillRect(px(p.x+2),px(sy+p.h),px(p.w),4);
   } else {
-    // base stone
     ctx.fillStyle='#44403a';ctx.fillRect(px(p.x),sy,px(p.w),p.h);
-    // bevel
     ctx.fillStyle='#6a6258';ctx.fillRect(px(p.x),sy,px(p.w),4);
     ctx.fillStyle='#7a7268';ctx.fillRect(px(p.x),sy,px(p.w),2);
-
-    // top stones
     ctx.fillStyle='#50483e';
     for(let i=4;i<p.w-4;i+=16) ctx.fillRect(px(p.x+i),sy-3,8,4);
-
-    // cracks + chips (deterministic) — slightly more prominent
     const h1=hash2(p.id,21), h2=hash2(p.id,22), h3=hash2(p.id,23), h4=hash2(p.id,24);
     ctx.fillStyle='rgba(0,0,0,0.34)';
-
-    // main crack
     const cx=px(p.x+6 + h1*(p.w-18));
     ctx.fillRect(cx,sy+2,1,9);
     ctx.fillRect(cx-6,sy+6,6,1);
     ctx.fillRect(cx-3,sy+8,3,1);
     if(h2>0.45) ctx.fillRect(cx+1,sy+7,5,1);
     if(h2>0.72) ctx.fillRect(cx+2,sy+4,3,1);
-
-    // secondary hairline crack (rare)
     if(h4>0.66){
       const cx2=px(p.x+10 + h4*(p.w-24));
       ctx.fillStyle='rgba(0,0,0,0.24)';
@@ -1137,21 +1037,14 @@ function drawPlatform(p){
       ctx.fillRect(cx2-4,sy+7,4,1);
       ctx.fillStyle='rgba(0,0,0,0.34)';
     }
-
-    // chipped corner pixels
     if(h3<0.55){ ctx.fillRect(px(p.x+3),sy+9,1,1); ctx.fillRect(px(p.x+5),sy+10,1,1); }
     if(h3>0.62){ ctx.fillRect(px(p.x+p.w-6),sy+7,1,1); ctx.fillRect(px(p.x+p.w-8),sy+8,1,1); }
-
-    // inner seam + columns
     ctx.fillStyle='#33302a';
     ctx.fillRect(px(p.x),sy+6,px(p.w),2);
     for(let i=20;i<p.w;i+=20) ctx.fillRect(px(p.x+i),sy,2,p.h);
-
-    // bottom shadow
     ctx.fillStyle='rgba(0,0,0,0.25)';ctx.fillRect(px(p.x+2),px(sy+p.h),px(p.w),4);
 
     if(p.checkpoint){
-      // checkpoint banner (medieval pixel)
       const bx=px(p.x+p.w/2);
       ctx.fillStyle='#2b1f12';ctx.fillRect(bx-1,sy-34,2,34);
       ctx.fillStyle='#6a4a22';ctx.fillRect(bx,sy-34,1,34);
@@ -1161,8 +1054,6 @@ function drawPlatform(p){
       ctx.fillStyle='rgba(255,220,120,0.18)';ctx.fillRect(bx+2,sy-32,12,1);
     }
   }
-
-  // Torches intentionally drawn elsewhere in the frame for correct layering.
 }
 
 function drawSpikesOnPlat(p) {
@@ -1282,26 +1173,19 @@ function drawHeart(heart){
   px(1,2,1,1);
 }
 
-// ── Time-slow visual overlay ───────────────────────────────────────────────────
-// Draws a subtle cyan border + tint when time is actively slowed.
-// Intensity scales with how much the speed is reduced so shallow upgrades
-// feel lighter than deep ones. Drawn after walls, before vignette.
 function drawTimeSlowOverlay(){
   if(timeScale >= 1.0) return;
-  const intensity = 1.0 - timeScale; // 0 = no slow, 0.70 = max slow (rank 10)
+  const intensity = 1.0 - timeScale;
   const pulse = 0.75 + 0.25*Math.sin(S.tick * 0.22);
 
-  // Subtle blue-cyan screen tint
   ctx.fillStyle = `rgba(20,60,160,${intensity * 0.10 * pulse})`;
   ctx.fillRect(0,0,W,H);
 
-  // Animated glowing border
   const borderAlpha = intensity * 0.55 * pulse;
   ctx.strokeStyle = `rgba(80,160,255,${borderAlpha})`;
   ctx.lineWidth = 3;
   ctx.strokeRect(2,2,W-4,H-4);
 
-  // Inner halo corners for extra polish
   const cSize = 14;
   ctx.strokeStyle = `rgba(140,210,255,${intensity * 0.7})`;
   ctx.lineWidth = 1.5;
@@ -1316,8 +1200,6 @@ function drawTimeSlowOverlay(){
     ctx.stroke();
   });
 
-  // Small indicator label in top-left
-  const lvl = upgLevels['timeslow'];
   const slowPctLabel = Math.round((1-timeScale)*100);
   ctx.fillStyle = `rgba(140,210,255,${intensity*0.85})`;
   ctx.font = 'bold 8px monospace';
@@ -1474,59 +1356,50 @@ function drawSky(){
 function frame(){
   try{
     if(S.alive&&!paused){
-        // timeSlowTimer counts in real frames (wall-clock), not game ticks.
-        if(timeSlowTimer>0){
-          timeSlowTimer--;
-          if(timeSlowTimer<=0) timeScale=1.0;
-        }
-        // Always call update() once per frame — physics deltas are scaled by
-        // timeScale inside update() so the game slows smoothly without ever
-        // skipping update() calls (which was the freeze bug).
-        update(S);
+      if(timeSlowTimer>0){
+        timeSlowTimer--;
+        if(timeSlowTimer<=0) timeScale=1.0;
       }
-      drawSky();
-      drawCastleWall();
-      drawWalls();
-      for(const bt of S.bats) drawBat(bt);
-      // Desired draw order: platforms, pickups, player, hazards, torches (player behind hazards)
-      for(const p of S.plats) drawPlatform(p);
-      for(const c of S.coins) drawGold(c);
-      for(const h of S.hearts) drawHeart(h);
-      drawKnight();
-      drawMushrooms();
-      for(const p of S.plats) drawSpikesOnPlat(p);
-      drawTorches();
-      // Time-slow overlay sits above world geometry
-      drawTimeSlowOverlay();
-      drawSling();
-if(paused){ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,W,H);}
-      const vig=ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
-      vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,0.45)');
-      ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
-      ctx.fillStyle='rgba(0,0,0,0.04)';for(let i=0;i<H;i+=2)ctx.fillRect(0,i,W,1);
-      if(S.pl.onG&&!drag&&!paused&&S.tick%60<38){
-        const py=S.pl.y-S.cam+S.pl.h/2+22;
-        ctx.fillStyle='rgba(255,220,120,.7)';ctx.font='bold 9px monospace';ctx.textAlign='center';
-        ctx.fillText('DRAG ANYWHERE TO LAUNCH!',W/2,py);ctx.textAlign='left';
-      }
-      drawFloats();
-
+      update(S);
+    }
+    drawSky();
+    drawCastleWall();
+    drawWalls();
+    for(const bt of S.bats) drawBat(bt);
+    for(const p of S.plats) drawPlatform(p);
+    for(const c of S.coins) drawGold(c);
+    for(const h of S.hearts) drawHeart(h);
+    drawKnight();
+    drawMushrooms();
+    for(const p of S.plats) drawSpikesOnPlat(p);
+    drawTorches();
+    drawTimeSlowOverlay();
+    drawSling();
+    if(paused){ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,W,H);}
+    const vig=ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
+    vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,0.45)');
+    ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='rgba(0,0,0,0.04)';for(let i=0;i<H;i+=2)ctx.fillRect(0,i,W,1);
+    if(S.pl.onG&&!drag&&!paused&&S.tick%60<38){
+      const py=S.pl.y-S.cam+S.pl.h/2+22;
+      ctx.fillStyle='rgba(255,220,120,.7)';ctx.font='bold 9px monospace';ctx.textAlign='center';
+      ctx.fillText('DRAG ANYWHERE TO LAUNCH!',W/2,py);ctx.textAlign='left';
+    }
+    drawFloats();
   } catch (err){
     console.error('FRAME CRASH:', err);
     timeScale = 1.0;
     timeSlowTimer = 0;
-    try{ drawFloats(); }catch(_){/* noop */}
+    try{ drawFloats(); }catch(_){}
   }
   requestAnimationFrame(frame);
 }
 
-// ── Shop / Pause ──────────────────────────────────────────────────────────────
 function togglePause(){
   if(!S.alive) return;
   paused=!paused;
   const btn=document.getElementById('pausebtn');
   if(paused){
-    // Reset time slow when pausing so the game never resumes at slowed speed
     timeScale=1.0;timeSlowTimer=0;
     btn.textContent='▶';saveGame(S);
     document.getElementById('pause-coins').textContent='⚜ '+totalCoins+' gold available';
@@ -1550,11 +1423,6 @@ function showGO(s){
   renderShop('go');document.getElementById('go').style.display='block';
 }
 
-// ── renderShop ────────────────────────────────────────────────────────────────
-// Each upgrade row now shows two stacked buttons:
-//   [BUY ⚜ N]  — buy next rank (existing behaviour)
-//   [SELL ⚜ N] — sell current rank for half what was paid (new)
-// The sell button is greyed out if the upgrade is at rank 0.
 function renderShop(which){
   const el=document.getElementById(which==='pause'?'upg-list-pause':'upg-list-go');
   el.innerHTML='';
@@ -1587,7 +1455,6 @@ function renderShop(which){
   });
 }
 
-// ── buyUpg ────────────────────────────────────────────────────────────────────
 function buyUpg(id,which){
   const u=UPGRADES.find(x=>x.id===id);
   if(u.maxLvl!=null&&upgLevels[id]>=u.maxLvl) return;
@@ -1603,17 +1470,11 @@ function buyUpg(id,which){
   renderShop(which);saveGame(S&&S.alive?S:null);
 }
 
-// ── sellUpg ───────────────────────────────────────────────────────────────────
-// Refunds half of what the player paid for the most recently purchased rank.
-// For example: if rank 3 cost 54⚜, selling rank 3 gives back 27⚜.
-// Live state (HP, air jumps) is clamped down immediately if needed.
 function sellUpg(id,which){
   if(upgLevels[id]<=0) return;
   const refund=upgSellPrice(id);
   upgLevels[id]--;
   totalCoins+=refund;
-
-  // ── Live-state adjustments ──────────────────────────────────────────────────
   if(id==='maxhp'&&S&&S.alive){
     S.pl.maxHp=maxHP();
     S.pl.hp=Math.min(S.pl.hp,S.pl.maxHp);
@@ -1622,11 +1483,9 @@ function sellUpg(id,which){
   if(id==='airjumps'&&S&&S.alive){
     S.pl.airJumpsLeft=Math.min(S.pl.airJumpsLeft,maxAirJumps());
   }
-  // If the player sold the last rank of timeslow while a slow is active, cancel it
   if(id==='timeslow'&&upgLevels['timeslow']<=0){
     timeScale=1.0;timeSlowTimer=0;
   }
-
   document.getElementById('coindisp').textContent='⚜ '+totalCoins;
   if(which==='pause') document.getElementById('pause-coins').textContent='⚜ '+totalCoins+' gold available';
   renderShop(which);
