@@ -713,9 +713,17 @@ function updateBats(s){
         bt.state='agro';bt.agroTimer=90+Math.random()*60;
       }
     } else if(bt.state==='agro'){
-      bt.flap+=0.06;bt.x+=bt.vx*1.2*ts;
-      bt.wy+=(pl.y-bt.wy)*0.008*ts;
-      if(bt.x<WALL+8||bt.x>W-WALL-8) bt.vx*=-1;
+      bt.flap+=0.18; // faster wing-beat while agitated
+      // Erratic jitter: random velocity kicks every ~6 frames
+      if(Math.floor(bt.agroTimer)%6===0){
+        bt.vx += (Math.random()-0.5)*3.2;
+        bt.wy += (Math.random()-0.5)*2.4;
+      }
+      bt.vx *= 0.88; // light damping so it doesn't fly off screen
+      bt.x  += bt.vx*1.4*ts;
+      bt.wy += (Math.random()-0.5)*0.6*ts; // constant small vertical wobble
+      if(bt.x<WALL+10||bt.x>W-WALL-10) bt.vx*=-1;
+      bt.x = Math.max(WALL+10, Math.min(W-WALL-10, bt.x));
       if(--bt.agroTimer<=0){
         bt.state='diving';
         const dx=pl.x-bt.x,dy=pl.y-bt.wy,d=Math.sqrt(dx*dx+dy*dy)||1;
@@ -1438,23 +1446,52 @@ function drawKnight(){
 function drawBat(bt){
   const sy=(bt.wy-S.cam)|0;
   if(sy<-30||sy>H+30) return;
-  const agro=bt.state==='agro'||bt.state==='diving';
-  const flash=bt.hurtTimer>0&&Math.floor(bt.hurtTimer/3)%2===0;
-  const wing=Math.sin(bt.flap)*(agro?10:6);
+  const isAgro  = bt.state==='agro';
+  const isDiving= bt.state==='diving';
+  const flash   = bt.hurtTimer>0&&Math.floor(bt.hurtTimer/3)%2===0;
+  const wing    = Math.sin(bt.flap)*(isAgro||isDiving?11:6);
+
   if(flash) ctx.globalAlpha=0.4;
-  if(agro&&bt.state==='agro'){ctx.fillStyle='rgba(255,140,0,0.12)';ctx.beginPath();ctx.arc(bt.x,sy,10,0,Math.PI*2);ctx.fill();}
-  if(agro&&bt.state==='diving'){ctx.fillStyle='rgba(255,100,0,0.18)';ctx.beginPath();ctx.arc(bt.x,sy,12,0,Math.PI*2);ctx.fill();}
-  ctx.fillStyle=agro?'#3d1010':'#2a2040';
+
+  // Body colour — purple-dark when idle, reddish-brown when agro/diving
+  const bodyDark = isAgro ? '#3a0e0e' : isDiving ? '#3d0c0c' : '#2a2040';
+  const bodyMid  = isAgro ? '#5c1a1a' : isDiving ? '#661010' : '#3d3060';
+
+  // Body
+  ctx.fillStyle=bodyDark;
   ctx.fillRect((bt.x-3)|0,(sy-2)|0,6,5);
+  // Wings
   ctx.fillRect((bt.x-12)|0,(sy-2+wing)|0,9,4);
-  ctx.fillRect((bt.x+3)|0,(sy-2+wing)|0,9,4);
+  ctx.fillRect((bt.x+3) |0,(sy-2+wing)|0,9,4);
   ctx.fillRect((bt.x-14)|0,(sy+1+wing)|0,3,2);
   ctx.fillRect((bt.x+11)|0,(sy+1+wing)|0,3,2);
-  ctx.fillStyle=agro?'#5a1818':'#3d3060';
+  // Wing highlight
+  ctx.fillStyle=bodyMid;
   ctx.fillRect((bt.x-11)|0,(sy-1+wing)|0,7,2);
-  ctx.fillRect((bt.x+4)|0,(sy-1+wing)|0,7,2);
-  ctx.fillStyle=bt.state==='diving'?'#ff6600':agro?'#cc6600':'#441111';
-  ctx.fillRect((bt.x-2)|0,(sy-1)|0,1,1);ctx.fillRect((bt.x+1)|0,(sy-1)|0,1,1);
+  ctx.fillRect((bt.x+4) |0,(sy-1+wing)|0,7,2);
+
+  // Eyes — flicker bright red when agro, orange-red when diving, dim when idle
+  let eyeColor;
+  if(isAgro){
+    // Flash between hot red and deep red in sync with the erratic jitter rhythm
+    const eyeFlicker = Math.sin(bt.flap * 2.8) > 0.1;
+    eyeColor = eyeFlicker ? '#ff1111' : '#cc0000';
+  } else if(isDiving){
+    eyeColor = '#ff6600';
+  } else {
+    eyeColor = '#441111';
+  }
+  ctx.fillStyle=eyeColor;
+  ctx.fillRect((bt.x-2)|0,(sy-1)|0,1,1);
+  ctx.fillRect((bt.x+1)|0,(sy-1)|0,1,1);
+
+  // Extra bright pupil dot when agro eyes are fully lit
+  if(isAgro && Math.sin(bt.flap*2.8) > 0.1){
+    ctx.fillStyle='#ff9999';
+    ctx.fillRect((bt.x-2)|0,(sy-1)|0,1,1);
+    ctx.fillRect((bt.x+1)|0,(sy-1)|0,1,1);
+  }
+
   if(flash) ctx.globalAlpha=1;
 }
 
