@@ -348,7 +348,7 @@ function checkSpikeCollision(s) {
   const plB  = pl.y + pl.h / 2;
   const plL  = pl.x - pl.w / 2 + 3;
   const plR  = pl.x + pl.w / 2 - 3;
-  const SPIKE_H = 20;
+  const SPIKE_H = 9;
   for (const p of s.plats) {
     if (plB < p.y - SPIKE_H - 1 || plB > p.y + 3) continue;
     if (plR < p.x || plL > p.x + p.w) continue;
@@ -1077,166 +1077,28 @@ function drawSpikesOnPlat(p) {
   const spikes = getPlatSpikes(p);
   if (!spikes.length) return;
   const sy = (p.y - S.cam)|0;
-  const absScore = Math.abs(p.y) / 10;
-  const density  = Math.min(1, (absScore - SPIKE_START) / (SPIKE_FULL - SPIKE_START));
-
+  const absScore  = Math.abs(p.y) / 10;
+  const density   = Math.min(1, (absScore - SPIKE_START) / (SPIKE_FULL - SPIKE_START));
+  const glowAlpha = 0.08 + density * 0.14;
   for (const wx of spikes) {
     const x = wx|0;
-    const seed = wx * 7 + p.id * 13;
-    const h0 = hash2(seed, 0);
-    const h1 = hash2(seed, 1);
-    const h2 = hash2(seed, 2);
-    const h3 = hash2(seed, 3);
-    const h4 = hash2(seed, 4);
-    const h5 = hash2(seed, 5);
-    const h6 = hash2(seed, 6);
-    const h7 = hash2(seed, 7);
-
-    // Bush size varies a little per instance
-    const scale = 0.85 + h0 * 0.3;  // 0.85–1.15
-    const bw = (20 * scale)|0;      // half-width
-    const bh = (18 * scale)|0;      // total bush foliage height
-    const trunkH = (5  * scale)|0;
-    const trunkW = (5  * scale)|0;
-
-    // Base Y of the bush foliage = platform top - trunk height
-    const by = sy - trunkH;
-
-    // ── Drop shadow ─────────────────────────────────────────────────────────
-    ctx.fillStyle = 'rgba(0,0,0,0.30)';
-    ctx.fillRect(x - bw + 2, by - bh + 3, bw*2 - 4, bh + trunkH);
-
-    // ── Trunk ───────────────────────────────────────────────────────────────
-    ctx.fillStyle = '#3b1f08';
-    ctx.fillRect(x - (trunkW>>1) - 1, by - 1, trunkW + 2, trunkH + 1);
-    ctx.fillStyle = '#5c3010';
-    ctx.fillRect(x - (trunkW>>1),     by,     trunkW,     trunkH);
-    ctx.fillStyle = '#7a4418';
-    ctx.fillRect(x - (trunkW>>1),     by,     (trunkW>>1), trunkH);
-    // Root bumps
-    ctx.fillStyle = '#3b1f08';
-    ctx.fillRect(x - (trunkW>>1) - 3, by + trunkH - 2, 4, 2);
-    ctx.fillRect(x + (trunkW>>1),     by + trunkH - 2, 4, 2);
-
-    // ── Bush dome — layered pixel rows forming a circle ─────────────────────
-    // Each row defined as [yOffset-from-top, xLeft, xRight] relative to centre
-    // This gives a convincing hand-pixelled circular bush silhouette.
-    // Widths tighten at top and bottom to form the dome.
-    const rows = [
-      // [dy, half-width]  dy=0 is top of dome
-      [0,  6],
-      [1,  9],
-      [2, 11],
-      [3, 12],
-      [4, 12],
-      [5, 11],
-      [6, 10],
-      [7,  8],
-      [8,  6],
-      [9,  4],
-    ];
-
-    const domeTop = by - bh;
-
-    // Three-tone green for depth
-    for(const [dy, hw] of rows){
-      const ry   = (domeTop + dy * (bh/9.5))|0;
-      const rx   = (hw * scale)|0;
-      const isTop = dy <= 2;
-      // Dark base
-      ctx.fillStyle = '#1a3d08';
-      ctx.fillRect(x - rx - 1, ry, rx*2 + 2, (bh/9.5 + 1)|0);
-    }
-    // Mid-green overlay (inner, slightly narrower)
-    for(const [dy, hw] of rows){
-      const ry   = (domeTop + dy * (bh/9.5))|0;
-      const rx   = Math.max(0, (hw * scale - 1))|0;
-      ctx.fillStyle = '#2e6810';
-      ctx.fillRect(x - rx, ry, rx*2, (bh/9.5 + 1)|0);
-    }
-    // Light-green highlight on upper-left dome surface
-    const hlRows = [[0,3],[1,5],[2,6],[3,5],[4,3]];
-    for(const [dy, hw] of hlRows){
-      const ry = (domeTop + dy * (bh/9.5))|0;
-      const rx = (hw * scale * 0.6)|0;
-      ctx.fillStyle = '#4a9820';
-      ctx.fillRect(x - (rx+2), ry, rx, (bh/9.5)|0);
-    }
-    // Brightest specular dot at top-left
-    ctx.fillStyle = '#72c030';
-    ctx.fillRect(x - (4*scale)|0, domeTop + 1, (3*scale)|0, (2*scale)|0);
-
-    // ── Thorns poking out of the silhouette ──────────────────────────────────
-    // A handful of sharp thorn tips around the outline
-    ctx.fillStyle = '#c07828';
-    const thornPositions = [
-      [-1, -1], [0, -1],  // top
-      [1, 2],             // upper right
-      [1, 5],             // mid right
-      [-1, 6],            // mid left
-      [0, 8],             // lower
-    ];
-    for(const [tx, ty] of thornPositions){
-      const tpx = (x + tx * bw * 0.18 * (tx < 0 ? -1 : 1))|0;
-      const tpy = (domeTop + ty * (bh/9) + (h1 * 2 - 1))|0;
-      const tDir = tx <= 0 ? -1 : 1;
-      // Small 2-3px thorn: base then tip
-      ctx.fillStyle = '#7a4010';
-      ctx.fillRect(tpx,           tpy,     2, 1);
-      ctx.fillStyle = '#c07828';
-      ctx.fillRect(tpx + tDir*2,  tpy - 1, 1, 1);
-    }
-
-    // ── Berries scattered through foliage ────────────────────────────────────
-    // Fixed set of berry positions derived from hash — varied per bush
-    const berryCount = 3 + ((h2 * 4 + density * 3)|0);
-    const berrySeeds = [
-      [h0, h1], [h2, h3], [h4, h5], [h6, h7],
-      [hash2(seed,8), hash2(seed,9)],
-      [hash2(seed,10), hash2(seed,11)],
-      [hash2(seed,12), hash2(seed,13)],
-    ];
-    for(let i = 0; i < Math.min(berryCount, berrySeeds.length); i++){
-      const [hx2, hy2] = berrySeeds[i];
-      // Place berries only inside the dome — use a simple ellipse test
-      const bRelX = (hx2 - 0.5) * 1.7;   // -0.85..0.85
-      const bRelY = (hy2 * 0.85 + 0.05);  // 0.05..0.90 (avoid very top/bottom)
-      // Rough ellipse membership check
-      if(bRelX*bRelX + (bRelY - 0.5)*(bRelY - 0.5)*1.4 > 0.38) continue;
-      const bpx = (x + bRelX * bw * 0.85)|0;
-      const bpy = (domeTop + bRelY * bh)|0;
-      const bSize = density > 0.5 ? 3 : 2;
-      // Berry shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.fillRect(bpx + 1, bpy + 1, bSize + 1, bSize + 1);
-      // Berry body
-      ctx.fillStyle = '#8a0808';
-      ctx.fillRect(bpx,     bpy,     bSize + 1, bSize + 1);
-      ctx.fillStyle = '#cc1414';
-      ctx.fillRect(bpx,     bpy,     bSize,     bSize);
-      ctx.fillStyle = '#ee3030';
-      ctx.fillRect(bpx,     bpy,     bSize - 1, bSize - 1);
-      // Tiny white specular on berry
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.fillRect(bpx,     bpy,     1, 1);
-    }
-
-    // ── Blood drips at deeper floors ─────────────────────────────────────────
-    if(density > 0.12){
-      const bloodR = (140 + density * 115)|0;
-      ctx.fillStyle = `rgba(${bloodR},6,6,${0.75 + density * 0.2})`;
-      // Drip on left thorn
-      const d1x = x - (bw * 0.7)|0;
-      const d1y = (domeTop + bh * 0.55)|0;
-      ctx.fillRect(d1x,     d1y,     2, 4);
-      ctx.fillRect(d1x,     d1y + 4, 1, 2);
-      if(density > 0.35){
-        const d2x = x + (bw * 0.5)|0;
-        const d2y = (domeTop + bh * 0.4)|0;
-        ctx.fillRect(d2x,   d2y,     2, 3);
-        ctx.fillRect(d2x+1, d2y + 3, 1, 2);
-      }
-    }
+    ctx.fillStyle = `rgba(255,40,0,${glowAlpha})`;
+    ctx.fillRect(x - 5, (sy - 10)|0, 10, 10);
+    ctx.fillStyle = '#1a1218';
+    ctx.fillRect(x,sy-10,2,2);ctx.fillRect(x-1,sy-8,4,2);ctx.fillRect(x-2,sy-6,6,2);
+    ctx.fillRect(x-3,sy-4,8,2);ctx.fillRect(x-3,sy-2,8,2);
+    ctx.fillStyle = '#7a7e88';
+    ctx.fillRect(x,sy-9,2,2);ctx.fillRect(x-1,sy-7,4,2);ctx.fillRect(x-2,sy-5,6,2);
+    ctx.fillRect(x-3,sy-3,8,2);ctx.fillRect(x-3,sy-1,8,2);
+    ctx.fillStyle = '#9aa0aa';
+    ctx.fillRect(x,sy-9,1,2);ctx.fillRect(x-1,sy-7,2,2);ctx.fillRect(x-2,sy-5,3,2);
+    ctx.fillStyle = '#d0d8e0';ctx.fillRect(x,sy-10,1,1);
+    ctx.fillStyle = '#505560';
+    ctx.fillRect(x+1,sy-7,2,2);ctx.fillRect(x+2,sy-5,2,2);ctx.fillRect(x+3,sy-3,2,4);
+    const bloodR = (120 + density * 100)|0;
+    const bloodA = 0.25 + density * 0.5;
+    ctx.fillStyle = `rgba(${bloodR},0,0,${bloodA})`;
+    ctx.fillRect(x-1,sy-6,1,4);ctx.fillRect(x+1,sy-4,1,3);
   }
 }
 
