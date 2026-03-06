@@ -224,8 +224,8 @@ const MUSH_MAX_DENSITY = 0.38;
 const PLANT_START        = 500;   // floor depth where plants begin appearing
 const PLANT_FULL         = 5000;  // floor depth where plant density peaks
 const PLANT_MAX_DENSITY  = 0.22;  // max fraction of eligible platforms with a plant
-const PLANT_AGRO         = 18;    // px from HEAD center that triggers a snap
-const PLANT_TRACK_RADIUS = 120;    // px from BASE where head starts tracking player
+const PLANT_AGRO         = 16;    // smaller bite radius
+const PLANT_TRACK_RADIUS = 120;   // larger tracking / lunge trigger radius
 const PLANT_MAX_REACH    = 44;    // max distance head can stray from base
 const SNAP_FRAMES        = 7;     // frames to fully close jaws
 const CLOSED_HOLD        = 50;    // frames plant stays shut before reopening
@@ -256,7 +256,7 @@ let S,drag=null,floats=[],paused=false,saveTimer=0;
 
 // ── Checkpoints ───────────────────────────────────────────────────────────────
 let checkpointPhase=true;
-let cpSelUp=1, cpSelDown=1;
+let cpSelUp=0, cpSelDown=0;
 function ownedCPTiers(dir){return dir>0?(upgLevels['cp_up']|0):(upgLevels['cp_down']|0);}
 function updateCheckpointUI(){
   const upBtn=document.getElementById('cpupbtn');
@@ -271,8 +271,17 @@ function cycleCheckpoint(dir){
   if(!checkpointPhase||!S||!S.alive) return;
   const max=ownedCPTiers(dir);
   if(max<=0) return;
-  if(dir>0){ cpSelUp=(cpSelUp%max)+1; teleportToCheckpoint(dir,cpSelUp); }
-  else { cpSelDown=(cpSelDown%max)+1; teleportToCheckpoint(dir,cpSelDown); }
+
+  if(dir>0){
+    cpSelUp++;
+    if(cpSelUp > max) cpSelUp = 1;
+    teleportToCheckpoint(dir, cpSelUp);
+  } else {
+    cpSelDown++;
+    if(cpSelDown > max) cpSelDown = 1;
+    teleportToCheckpoint(dir, cpSelDown);
+  }
+
   updateCheckpointUI();
 }
 function teleportToCheckpoint(dir,tier){
@@ -281,9 +290,31 @@ function teleportToCheckpoint(dir,tier){
   const px=W/2;
   const platY=targetY+12;
   const id=platId(platY);
+
   let p=S.plats.find(pp=>pp.id===id);
-  if(!p){ p={x:px-55,y:platY,w:110,h:14,icy:false,torch:false,id}; S.plats.push(p); }
-  p.checkpoint=true;
+  if(!p){
+    p={
+      x:px-55,y:platY,w:110,h:14,
+      icy:false,torch:false,id,
+      checkpoint:true,
+      safe:true
+    };
+    S.plats.push(p);
+  } else {
+    p.x = px-55;
+    p.y = platY;
+    p.w = 110;
+    p.h = 14;
+    p.icy = false;
+    p.torch = false;
+    p.checkpoint = true;
+    p.safe = true;
+  }
+
+  // strip any hazards already tied to this platform
+  S.mushrooms = S.mushrooms.filter(m => m.platId !== id);
+  S.plants    = S.plants.filter(pl => pl.platId !== id);
+
   S.pl.x=px; S.pl.y=targetY-20; S.pl.vx=0; S.pl.vy=0;
   S.pl.onG=false; S.pl.coyote=0; S.pl.fallVy=0;
   S.cam=S.pl.y-H*0.38;
@@ -301,6 +332,7 @@ const SPIKE_SLOT  = 13;
 const SPIKE_MAX_FILL = 0.88;
 
 function mushroomXForPlat(p){
+  if(p.safe || p.checkpoint) return null;
   const absScore = Math.abs(p.y) / 10;
   if(absScore < MUSH_START) return null;
   const density = Math.min(1, (absScore - MUSH_START) / (MUSH_FULL - MUSH_START));
@@ -311,6 +343,7 @@ function mushroomXForPlat(p){
 // Returns deterministic plant X on a given platform (mirrors tryPlacePlant logic).
 // Used by getPlatSpikes to avoid overlapping spikes with plant stems.
 function plantXForPlat(p){
+  if(p.safe || p.checkpoint) return null;
   const absScore = Math.abs(p.y) / 10;
   if(absScore < PLANT_START) return null;
   if(p.w < 30) return null;
@@ -320,6 +353,8 @@ function plantXForPlat(p){
 }
 
 function getPlatSpikes(p) {
+  if (p.safe || p.checkpoint) return [];
+
   const absScore = Math.abs(p.y) / 10;
   if (absScore < SPIKE_START) return [];
   const density = Math.min(1, (absScore - SPIKE_START) / (SPIKE_FULL - SPIKE_START));
@@ -451,6 +486,8 @@ function tryPlaceHeart(s,wy,band){
 }
 
 function tryPlaceMushroom(s, p){
+  if(p.safe || p.checkpoint) return;
+
   const absScore = Math.abs(p.y) / 10;
   if(absScore < MUSH_START) return;
   if(s.mushrooms.some(m=>m.platId===p.id)) return;
@@ -469,6 +506,8 @@ function tryPlaceMushroom(s, p){
 
 // ── Carnivorous Plant placement ───────────────────────────────────────────────
 function tryPlacePlant(s, p){
+  if(p.safe || p.checkpoint) return;
+
   const absScore = Math.abs(p.y) / 10;
   if(absScore < PLANT_START) return;
   // Don't co-spawn with a mushroom on the same platform
@@ -627,7 +666,7 @@ function updatePlants(s){
         plant.snapTimer = 0;
         plant.mouthOpen = 0;
         // Damage check uses HEAD position
-        if(headDist < PLANT_AGRO + 4 && plant.hurtCooldown <= 0){
+        if(headDist < PLANT_AGRO && plant.hurtCooldown <= 0){
           takeDamage(s, 1, '🌿 CHOMPED!');
           plant.hurtCooldown = 110;
         }
@@ -769,9 +808,8 @@ function update(s){
     pl.x += d * 0.7;
   }
 
-  const bounce=bounceVal();
-  if(pl.x-pl.w/2<WALL){pl.x=WALL+pl.w/2;pl.vx=Math.abs(pl.vx)*bounce;}
-  if(pl.x+pl.w/2>W-WALL){pl.x=W-WALL-pl.w/2;pl.vx=-Math.abs(pl.vx)*bounce;}
+  if(pl.x-pl.w/2<WALL){pl.x=WALL+pl.w/2;pl.vx=Math.abs(pl.vx)*bounceVal();}
+  if(pl.x+pl.w/2>W-WALL){pl.x=W-WALL-pl.w/2;pl.vx=-Math.abs(pl.vx)*bounceVal();}
 
   if(pl.onG){pl.coyote=3;pl.airJumpsLeft=maxAirJumps();}
   else if(pl.coyote>0) pl.coyote--;
@@ -1698,7 +1736,7 @@ function restart(){
   floats=[];drag=null;paused=false;saveTimer=0;
   timeScale=1.0;timeSlowTimer=0;
   S=mkS(null);
-  checkpointPhase=true; cpSelUp=1; cpSelDown=1; updateCheckpointUI();
+  checkpointPhase=true; cpSelUp=0; cpSelDown=0; updateCheckpointUI();
   document.getElementById('go').style.display='none';
   document.getElementById('pausemenu').style.display='none';
   document.getElementById('pausebtn').style.display='flex';
