@@ -81,7 +81,7 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
   <div id="score">FLOOR: 0</div>
   <div id="best">BEST: 0</div>
   <div id="coindisp">⚜ 0</div>
-  <div id="verdisp">v0.22-checkpoints</div>
+  <div id="verdisp">v0.10</div>
 <div id="hearts">❤️❤️❤️</div>
 </div>
 <button id="fsbtn" onclick="toggleFS()" title="Fullscreen">⛶</button>
@@ -915,8 +915,8 @@ function drawCastleWall(){
 
       // Small pockmarks / chips
       const h0=hash2(row,col);
-      if(h0<0.22){
-        ctx.fillStyle='rgba(0,0,0,0.22)';
+      if(h0<0.14){
+        ctx.fillStyle='rgba(0,0,0,0.18)';
         const px=(bx+4+((h0*999)|0)%22)|0, py=(wy+3+(((h0*777)|0)%9))|0;
         ctx.fillRect(px,py,2,1);
         if(h0<0.11) ctx.fillRect(px+3,py+4,1,1);
@@ -926,7 +926,7 @@ function drawCastleWall(){
       const hw=hash2(row*3, col*7);
       const wx=bx+10+((hash2(row,col*13)*10)|0);
       // Small slit
-      if(hw<0.10){
+      if(hw<0.08){
         ctx.fillStyle='#0e0c0a';
         ctx.fillRect(wx,wy+4,1,6);
         // subtle rim highlight
@@ -934,12 +934,12 @@ function drawCastleWall(){
         ctx.fillRect(wx-1,wy+4,1,6);
       }
       // Larger arched window (rare)
-      else if(hw>0.965){
+      else if(hw>0.992){
         const cx=(bx + (bW>>1))|0;
-        const w=10,h=12, top=(wy+2)|0;
+        const w=8,h=10, top=(wy+3)|0;
         // glow (moonlight or torchlight depending on depth)
         const glow = Math.min(0.35, 0.12 + (Math.min(1,Math.abs(S.score)/4500))*0.22);
-        const g=ctx.createRadialGradient(cx,top+6,0,cx,top+6,18);
+        const g=ctx.createRadialGradient(cx,top+5,0,cx,top+5,16);
         g.addColorStop(0,`rgba(255,210,110,${glow})`);
         g.addColorStop(1,'rgba(255,160,40,0)');
         ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,top+6,18,0,Math.PI*2); ctx.fill();
@@ -947,8 +947,8 @@ function drawCastleWall(){
         // window void
         ctx.fillStyle='#0b0908';
         ctx.fillRect(cx-(w>>1), top+3, w, h-3);
-        ctx.fillRect(cx-3, top+2, 6, 1); // arch cap
-        ctx.fillRect(cx-2, top+1, 4, 1);
+        ctx.fillRect(cx-2, top+2, 4, 1); // arch cap
+        ctx.fillRect(cx-1, top+1, 2, 1);
 
         // stone frame
         ctx.fillStyle='#3a332c';
@@ -1021,10 +1021,10 @@ function drawPlatform(p){
 
     // ice cracks (deterministic per platform)
     const h=hash2(p.id,17);
-    ctx.fillStyle='rgba(230,250,255,0.25)';
+    ctx.fillStyle='rgba(230,250,255,0.18)';
     const c1=px(p.x+6 + h*(p.w-18));
-    ctx.fillRect(c1,sy+3,1,6);
-    ctx.fillRect(c1-4,sy+5,4,1);
+    ctx.fillRect(c1,sy+4,1,5);
+    ctx.fillRect(c1-3,sy+6,3,1);
     if(h>0.6){ ctx.fillRect(c1+1,sy+6,3,1); }
 
     ctx.fillStyle='rgba(180,230,255,0.12)';ctx.fillRect(px(p.x),sy,px(p.w),p.h);
@@ -1038,18 +1038,18 @@ function drawPlatform(p){
 
     // top stones
     ctx.fillStyle='#50483e';
-    for(let i=4;i<p.w-4;i+=18) ctx.fillRect(px(p.x+i),sy-5,10,6);
+    for(let i=4;i<p.w-4;i+=16) ctx.fillRect(px(p.x+i),sy-3,8,4);
 
     // cracks + chips (deterministic)
     const h1=hash2(p.id,21), h2=hash2(p.id,22), h3=hash2(p.id,23);
     ctx.fillStyle='rgba(0,0,0,0.22)';
     const cx=px(p.x+6 + h1*(p.w-18));
-    ctx.fillRect(cx,sy+2,1,10);
-    ctx.fillRect(cx-6,sy+6,6,1);
-    if(h2>0.5) ctx.fillRect(cx+1,sy+8,5,1);
+    ctx.fillRect(cx,sy+3,1,7);
+    ctx.fillRect(cx-5,sy+6,5,1);
+    if(h2>0.55) ctx.fillRect(cx+1,sy+7,4,1);
     // chipped corner pixels
-    if(h3<0.6){ ctx.fillRect(px(p.x+3),sy+9,2,1); }
-    if(h3>0.35){ ctx.fillRect(px(p.x+p.w-6),sy+7,2,1); }
+    if(h3<0.45){ ctx.fillRect(px(p.x+3),sy+9,1,1); }
+    if(h3>0.62){ ctx.fillRect(px(p.x+p.w-6),sy+7,1,1); }
 
     // inner seam + columns
     ctx.fillStyle='#33302a';
@@ -1556,7 +1556,7 @@ function restart(){
 }
 
 (function boot(){
-  console.log('Castle Climber build: v0.22-checkpoints');
+  console.log('Castle Climber build: v0.10');
   const save=loadSave();
   if(save){
     if(save.upgLevels){
