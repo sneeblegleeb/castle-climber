@@ -79,7 +79,7 @@ canvas { display:block; image-rendering:pixelated; touch-action:none; position:a
   <div id="score">FLOOR: 0</div>
   <div id="best">BEST: 0</div>
   <div id="coindisp">⚜ 0</div>
-  <div id="verdisp">v0.23-plants</div>
+  <div id="verdisp">v0.24-midpoint</div>
 <div id="hearts">❤️❤️❤️</div>
 </div>
 <button id="fsbtn" onclick="toggleFS()" title="Fullscreen">⛶</button>
@@ -268,24 +268,61 @@ function updateCheckpointUI(){
   if(dnBtn){ dnBtn.style.display=(show&&dnOwned>0)?'flex':'none'; dnBtn.textContent='▼'; }
 }
 function cycleCheckpoint(dir){
-  if(!checkpointPhase||!S||!S.alive) return;
-  const max=ownedCPTiers(dir);
-  if(max<=0) return;
+  if(!checkpointPhase || !S || !S.alive) return;
 
-  if(dir>0){
+  const maxUp   = ownedCPTiers(1);
+  const maxDown = ownedCPTiers(-1);
+
+  if(dir > 0){
+
+    // if coming up from negative side, go to 0 first
+    if(cpSelDown > 0){
+      cpSelDown--;
+      if(cpSelDown === 0){
+        teleportToCheckpoint(0,0);
+        updateCheckpointUI();
+        return;
+      }
+      teleportToCheckpoint(-1, cpSelDown);
+      updateCheckpointUI();
+      return;
+    }
+
+    if(maxUp <= 0) return;
+
     cpSelUp++;
-    if(cpSelUp > max) cpSelUp = 1;
-    teleportToCheckpoint(dir, cpSelUp);
+    if(cpSelUp > maxUp) cpSelUp = 1;
+
+    teleportToCheckpoint(1, cpSelUp);
+
   } else {
+
+    // if coming down from positive side, go to 0 first
+    if(cpSelUp > 0){
+      cpSelUp--;
+      if(cpSelUp === 0){
+        teleportToCheckpoint(0,0);
+        updateCheckpointUI();
+        return;
+      }
+      teleportToCheckpoint(1, cpSelUp);
+      updateCheckpointUI();
+      return;
+    }
+
+    if(maxDown <= 0) return;
+
     cpSelDown++;
-    if(cpSelDown > max) cpSelDown = 1;
-    teleportToCheckpoint(dir, cpSelDown);
+    if(cpSelDown > maxDown) cpSelDown = 1;
+
+    teleportToCheckpoint(-1, cpSelDown);
   }
 
   updateCheckpointUI();
 }
 function teleportToCheckpoint(dir,tier){
-  const targetScore=dir*tier*1000;
+  let targetScore=0;
+  if(dir!==0) targetScore=dir*tier*1000;
   const targetY=-targetScore*10;
   const px=W/2;
   const platY=targetY+12;
@@ -1746,7 +1783,7 @@ function restart(){
 }
 
 (function boot(){
-  console.log('Castle Climber build: v0.23-plants');
+  console.log('Castle Climber build: v0.24-midpoint');
   const save=loadSave();
   if(save){
     if(save.upgLevels){
