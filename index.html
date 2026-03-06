@@ -1000,11 +1000,12 @@ function updateSlimes(s){
 
       // Landing on top
       if(sl.prevY <= p.y && sl.vy >= 0){
+        const impactVY = sl.vy;
         sl.y      = p.y;
         sl.vy     = 0;
         sl.onGround = true;
         // Squish on landing proportional to fall speed
-        const impact = Math.min(1, Math.abs(sl.vy) / 8);
+        const impact = Math.min(1, Math.abs(impactVY) / 8);
         if(impact > 0.15){
           sl.squish      = impact * 0.85;
           sl.squishTimer = 12;
