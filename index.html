@@ -221,13 +221,15 @@ const MUSH_FULL  = 4500;
 const MUSH_MAX_DENSITY = 0.38;
 
 // ── Carnivorous Plant constants ───────────────────────────────────────────────
-const PLANT_START       = 500;   // floor depth where plants begin appearing
-const PLANT_FULL        = 5000;  // floor depth where plant density peaks
-const PLANT_MAX_DENSITY = 0.22;  // max fraction of eligible platforms with a plant
-const PLANT_AGRO        = 42;    // px radius that triggers a snap
-const SNAP_FRAMES       = 7;     // frames to fully close jaws
-const CLOSED_HOLD       = 45;    // frames plant stays shut before reopening
-const OPEN_FRAMES       = 18;    // frames to reopen
+const PLANT_START        = 500;   // floor depth where plants begin appearing
+const PLANT_FULL         = 5000;  // floor depth where plant density peaks
+const PLANT_MAX_DENSITY  = 0.22;  // max fraction of eligible platforms with a plant
+const PLANT_AGRO         = 26;    // px from HEAD center that triggers a snap
+const PLANT_TRACK_RADIUS = 85;    // px from BASE where head starts tracking player
+const PLANT_MAX_REACH    = 44;    // max distance head can stray from base
+const SNAP_FRAMES        = 7;     // frames to fully close jaws
+const CLOSED_HOLD        = 50;    // frames plant stays shut before reopening
+const OPEN_FRAMES        = 22;    // frames to reopen
 
 let timeScale=1.0;
 let timeSlowTimer=0;
@@ -476,15 +478,22 @@ function tryPlacePlant(s, p){
   const density = Math.min(1, (absScore - PLANT_START) / (PLANT_FULL - PLANT_START));
   if(hash2(p.id*71+3, 55) > density * PLANT_MAX_DENSITY) return;
   const px = p.x + 14 + hash2(p.id, 66) * (p.w - 28);
+  const restY = p.y - 22;   // resting world-Y of head (above stem base)
   s.plants.push({
-    x: px, y: p.y,
+    x: px, y: p.y,           // base anchor (world)
     platId: p.id,
-    state: 'open',      // 'open' | 'snapping' | 'closed' | 'reopening'
-    mouthOpen: 1.0,     // 0 = fully closed, 1 = fully open
+    state: 'open',           // 'open' | 'snapping' | 'closed' | 'reopening'
+    mouthOpen: 1.0,          // 0 = fully closed, 1 = fully open
     snapTimer: 0,
     bobAngle: hash2(p.id, 93) * Math.PI * 2,
     hurtCooldown: 0,
     absScore,
+    // Head tracking state (world coordinates)
+    headX: px,               // current head position
+    headY: restY,
+    headVX: 0,               // head velocity (spring physics)
+    headVY: 0,
+    restY,                   // resting world-Y above base
   });
 }
 
@@ -558,50 +567,125 @@ function updateMushrooms(s){
 // ── Carnivorous Plants ────────────────────────────────────────────────────────
 function updatePlants(s){
   const pl = s.pl;
+  const ts = timeScale;
+
   for(const plant of s.plants){
     plant.bobAngle += 0.03;
     if(plant.hurtCooldown > 0) plant.hurtCooldown--;
 
-    const dx = pl.x - plant.x;
-    const dy = pl.y - plant.y;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    // Only agro if player is roughly above or level with the plant's mouth
-    const agro = dist < PLANT_AGRO && pl.y < plant.y + 8;
+    // Distance from BASE to player (used for tracking decisions)
+    const bdx = pl.x - plant.x;
+    const bdy = pl.y - plant.y;
+    const baseDist = Math.sqrt(bdx*bdx + bdy*bdy);
+
+    // Distance from HEAD to player (used for snap trigger + damage)
+    const hdx = pl.x - plant.headX;
+    const hdy = pl.y - plant.headY;
+    const headDist = Math.sqrt(hdx*hdx + hdy*hdy);
+
+    // ── Determine spring target for the head ──────────────────────────────────
+    let targetX = plant.x;
+    let targetY = plant.restY;
+    let springK = 0.055;   // stiffness
+    let damping = 0.78;    // velocity damping
+
+    const playerAboveBase = pl.y < plant.y + 10;
 
     if(plant.state === 'open'){
-      // Gentle idle breathing animation
       plant.mouthOpen = 0.6 + 0.4 * Math.abs(Math.sin(plant.bobAngle * 0.32));
-      if(agro){
+
+      if(baseDist < PLANT_TRACK_RADIUS && playerAboveBase){
+        // Track player — spring toward player but constrained by reach
+        targetX = pl.x;
+        targetY = pl.y;
+        springK = 0.045;
+      } else {
+        // Idle sway at rest
+        const sway = Math.sin(plant.bobAngle * 0.38) * 3.5;
+        targetX = plant.x + sway;
+        targetY = plant.restY + Math.sin(plant.bobAngle * 0.22) * 2;
+      }
+
+      // Snap when head gets close to player
+      if(headDist < PLANT_AGRO && playerAboveBase){
         plant.state     = 'snapping';
         plant.snapTimer = 0;
       }
+
     } else if(plant.state === 'snapping'){
       plant.snapTimer++;
       plant.mouthOpen = Math.max(0, 1.0 - plant.snapTimer / SNAP_FRAMES);
+
+      // Lunge toward player during snap
+      targetX = pl.x;
+      targetY = pl.y;
+      springK = 0.32;
+      damping = 0.65;
+
       if(plant.snapTimer >= SNAP_FRAMES){
         plant.state     = 'closed';
         plant.snapTimer = 0;
         plant.mouthOpen = 0;
-        // Deal damage if player is still inside snap zone when jaws close
-        if(dist < PLANT_AGRO - 6 && plant.hurtCooldown <= 0){
+        // Damage check uses HEAD position
+        if(headDist < PLANT_AGRO + 4 && plant.hurtCooldown <= 0){
           takeDamage(s, 1, '🌿 CHOMPED!');
-          plant.hurtCooldown = 100;
+          plant.hurtCooldown = 110;
         }
       }
+
     } else if(plant.state === 'closed'){
       plant.mouthOpen = 0;
       plant.snapTimer++;
+      // Hold in place while closed, slowly drift back
+      targetX = plant.x + (plant.headX - plant.x) * 0.4;
+      targetY = plant.restY + (plant.headY - plant.restY) * 0.4;
+      springK = 0.06;
       if(plant.snapTimer >= CLOSED_HOLD){
         plant.state     = 'reopening';
         plant.snapTimer = 0;
       }
+
     } else if(plant.state === 'reopening'){
       plant.snapTimer++;
       plant.mouthOpen = Math.min(1.0, plant.snapTimer / OPEN_FRAMES);
+      // Retreat back to rest
+      targetX = plant.x;
+      targetY = plant.restY;
+      springK = 0.07;
       if(plant.snapTimer >= OPEN_FRAMES){
         plant.state     = 'open';
         plant.snapTimer = 0;
       }
+    }
+
+    // ── Spring physics (scaled by timeScale so slow-time feels right) ─────────
+    plant.headVX += (targetX - plant.headX) * springK * ts;
+    plant.headVY += (targetY - plant.headY) * springK * ts;
+    const damp = 1 - (1 - damping) * ts;
+    plant.headVX *= damp;
+    plant.headVY *= damp;
+    plant.headX  += plant.headVX * ts;
+    plant.headY  += plant.headVY * ts;
+
+    // ── Clamp head to max reach from base ─────────────────────────────────────
+    const rdx  = plant.headX - plant.x;
+    const rdy  = plant.headY - plant.y;
+    const rDist = Math.sqrt(rdx*rdx + rdy*rdy);
+    if(rDist > PLANT_MAX_REACH){
+      const scale = PLANT_MAX_REACH / rDist;
+      plant.headX = plant.x + rdx * scale;
+      plant.headY = plant.y + rdy * scale;
+      // Kill outward velocity so it doesn't oscillate against the constraint
+      const dot = plant.headVX*(rdx/rDist) + plant.headVY*(rdy/rDist);
+      if(dot > 0){
+        plant.headVX -= (rdx/rDist) * dot;
+        plant.headVY -= (rdy/rDist) * dot;
+      }
+    }
+    // Prevent head from going below the platform surface
+    if(plant.headY > plant.y - 4){
+      plant.headY = plant.y - 4;
+      if(plant.headVY > 0) plant.headVY = 0;
     }
   }
 }
@@ -1063,137 +1147,179 @@ function drawMushrooms(){
 // ── Carnivorous Plant drawing ─────────────────────────────────────────────────
 function drawPlants(){
   for(const plant of S.plants){
-    const sy  = (plant.y - S.cam)|0;
-    if(sy < -80 || sy > H + 20) continue;
-    const px    = plant.x|0;
-    const open  = plant.mouthOpen;   // 0 = fully closed, 1 = fully open
-    const sway  = Math.sin(plant.bobAngle * 0.38) * 2.5;
+    // Base anchor in screen space
+    const bsy = (plant.y - S.cam)|0;
+    if(bsy < -120 || bsy > H + 30) continue;
+    const bsx = plant.x|0;
+
+    // Head position in screen space
+    const hsx = plant.headX|0;
+    const hsy = (plant.headY - S.cam)|0;
+
+    const open    = plant.mouthOpen;
     const density = Math.min(1, (plant.absScore - PLANT_START) / (PLANT_FULL - PLANT_START));
 
-    // ── Danger glow when closed or snapping ──────────────────────────────────
+    // ── Danger glow (at head position) ──────────────────────────────────────
     if(plant.state === 'snapping' || plant.state === 'closed'){
-      const gAlpha = plant.state === 'closed' ? 0.25 : 0.10 + 0.12*(1-open);
-      const gr = ctx.createRadialGradient(px+sway, sy-24, 0, px+sway, sy-24, 26);
+      const gAlpha = plant.state === 'closed' ? 0.28 : 0.12 + 0.14*(1-open);
+      const gr = ctx.createRadialGradient(hsx, hsy - 4, 0, hsx, hsy - 4, 28);
       gr.addColorStop(0, `rgba(200,60,0,${gAlpha})`);
       gr.addColorStop(1, 'rgba(160,30,0,0)');
       ctx.fillStyle = gr;
-      ctx.beginPath(); ctx.arc(px+sway, sy-24, 26, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(hsx, hsy - 4, 28, 0, Math.PI*2); ctx.fill();
     }
 
-    // ── Stem (slightly sways) ────────────────────────────────────────────────
-    const stemTop = sy - 20;
-    const sw = (sway * 0.15)|0;
-    // Dark outline
-    ctx.fillStyle = '#0f2a08';
-    ctx.fillRect(px - 3 + sw, stemTop,     7, 20);
-    // Mid green
-    ctx.fillStyle = '#1e5a10';
-    ctx.fillRect(px - 2 + sw, stemTop + 1, 5, 19);
-    // Highlight edge
-    ctx.fillStyle = '#2d8018';
-    ctx.fillRect(px - 1 + sw, stemTop + 2, 3, 16);
-    ctx.fillStyle = '#3da020';
-    ctx.fillRect(px      + sw, stemTop + 3, 2, 12);
-    // Small side leaf
-    ctx.fillStyle = '#196010';
-    ctx.fillRect(px + 3 + (sway*0.5)|0, stemTop + 7, 7, 3);
-    ctx.fillRect(px + 3 + (sway*0.5)|0, stemTop + 8, 9, 1);
-    ctx.fillStyle = '#26801a';
-    ctx.fillRect(px + 3 + (sway*0.5)|0, stemTop + 7, 6, 1);
+    // ── Curved segmented stem from base to head ─────────────────────────────
+    // We compute a quadratic bezier control point that bows the stem slightly
+    // perpendicular to the direct line, giving an organic snake-neck feel.
+    // The bow increases with the lateral displacement of the head.
+    {
+      const stemSegs = 7;
 
-    // ── Head center (follows full sway) ──────────────────────────────────────
-    const hx   = (px + sway)|0;
-    const jawY  = stemTop - 2;             // baseline where jaws meet when closed
-    const jawGap = (open * 12)|0;          // pixels of separation between jaws
+      // Direction vector base→head
+      const dx = hsx - bsx, dy = hsy - bsy;
+      // Perpendicular unit vector (used to bow the curve)
+      const len = Math.sqrt(dx*dx+dy*dy) || 1;
+      const perpX = -dy/len, perpY = dx/len;
+      // Bow amount — scales with horizontal stretch so it always looks natural
+      const bow = Math.abs(dx) * 0.28;
 
-    // ── Lower jaw (fixed, sits at jawY) ─────────────────────────────────────
-    const loY = jawY;
-    // Outline
+      // Control point: 65% up the stem, bowed sideways
+      const cpX = bsx + dx*0.65 + perpX*bow;
+      const cpY = bsy + dy*0.65 + perpY*bow;
+
+      // Draw dark outline first (wider)
+      for(let i = 0; i <= stemSegs; i++){
+        const t  = i / stemSegs;
+        const mt = 1 - t;
+        const sx = (mt*mt*bsx + 2*mt*t*cpX + t*t*hsx)|0;
+        const sy = (mt*mt*bsy + 2*mt*t*cpY + t*t*hsy)|0;
+        const w  = Math.max(3, (6 - t * 2)|0);
+        ctx.fillStyle = '#0c2008';
+        ctx.fillRect(sx - (w/2+1)|0, sy - 1, w + 2, 4);
+      }
+      // Mid green
+      for(let i = 0; i <= stemSegs; i++){
+        const t  = i / stemSegs;
+        const mt = 1 - t;
+        const sx = (mt*mt*bsx + 2*mt*t*cpX + t*t*hsx)|0;
+        const sy = (mt*mt*bsy + 2*mt*t*cpY + t*t*hsy)|0;
+        const w  = Math.max(2, (5 - t * 1.5)|0);
+        ctx.fillStyle = '#1e5a10';
+        ctx.fillRect(sx - (w/2)|0, sy, w, 3);
+      }
+      // Highlight edge
+      for(let i = 0; i <= stemSegs; i++){
+        const t  = i / stemSegs;
+        const mt = 1 - t;
+        const sx = (mt*mt*bsx + 2*mt*t*cpX + t*t*hsx)|0;
+        const sy = (mt*mt*bsy + 2*mt*t*cpY + t*t*hsy)|0;
+        ctx.fillStyle = '#3da020';
+        ctx.fillRect(sx, sy, 2, 2);
+      }
+
+      // Small side leaf — attached ~40% up the stem, fixed to avoid jitter
+      const leafT  = 0.42;
+      const leafMt = 1 - leafT;
+      const leafX  = (leafMt*leafMt*bsx + 2*leafMt*leafT*cpX + leafT*leafT*hsx)|0;
+      const leafY  = (leafMt*leafMt*bsy + 2*leafMt*leafT*cpY + leafT*leafT*hsy)|0;
+      const leafDir = dx > 0 ? -1 : 1;   // point away from lean direction
+      ctx.fillStyle = '#196010';
+      ctx.fillRect(leafX + leafDir*1, leafY - 1, 8*leafDir, 3);
+      ctx.fillRect(leafX + leafDir*2, leafY - 1, 10*leafDir, 1);
+      ctx.fillStyle = '#26801a';
+      ctx.fillRect(leafX + leafDir*1, leafY - 1, 6*leafDir, 1);
+    }
+
+    // ── Head — centred on hsx, hsy ───────────────────────────────────────────
+    const jawGap = (open * 12)|0;
+    // Jaw Y baseline: lower jaw sits at hsy, upper jaw floats above it
+    const loY = hsy;
+    const upY = loY - jawGap - 12;
+
+    // ── Lower jaw ───────────────────────────────────────────────────────────
     ctx.fillStyle = '#0d2a06';
-    ctx.fillRect(hx - 10, loY - 1, 20, 9);
-    // Main body
+    ctx.fillRect(hsx - 10, loY - 1, 20, 9);
     ctx.fillStyle = '#1a5010';
-    ctx.fillRect(hx - 9, loY,    18, 8);
+    ctx.fillRect(hsx - 9, loY,    18, 8);
     ctx.fillStyle = '#236618';
-    ctx.fillRect(hx - 8, loY + 1, 16, 6);
-    // Red inner gum (fades when closed)
+    ctx.fillRect(hsx - 8, loY + 1, 16, 6);
     if(open > 0.05){
       ctx.fillStyle = `rgba(170,28,18,${open * 0.92})`;
-      ctx.fillRect(hx - 7, loY + 2, 14, 5);
+      ctx.fillRect(hsx - 7, loY + 2, 14, 5);
       ctx.fillStyle = `rgba(210,55,35,${open * 0.55})`;
-      ctx.fillRect(hx - 6, loY + 2, 5, 2);
+      ctx.fillRect(hsx - 6, loY + 2, 5, 2);
     }
-    // Lower teeth (point upward, longer when open)
+    // Lower teeth (pointing up)
     ctx.fillStyle = '#dce8c0';
     for(let t = -6; t <= 6; t += 4){
       const th = (1 + open * 3.5)|0;
-      ctx.fillRect(hx + t - 1, loY - th, 2, th + 1);
-      // Tooth shadow
+      ctx.fillRect(hsx + t - 1, loY - th, 2, th + 1);
       ctx.fillStyle = '#a0b88a';
-      ctx.fillRect(hx + t,     loY - th, 1, th);
+      ctx.fillRect(hsx + t,     loY - th, 1, th);
       ctx.fillStyle = '#dce8c0';
     }
 
-    // ── Upper jaw (moves up when open) ──────────────────────────────────────
-    const upY = loY - jawGap - 12;
-    // Outline
+    // ── Upper jaw ───────────────────────────────────────────────────────────
     ctx.fillStyle = '#0d2a06';
-    ctx.fillRect(hx - 10, upY + 3, 20, 10);
-    // Main body
+    ctx.fillRect(hsx - 10, upY + 3, 20, 10);
     ctx.fillStyle = '#1a5010';
-    ctx.fillRect(hx - 9, upY + 4, 18, 8);
+    ctx.fillRect(hsx - 9, upY + 4, 18, 8);
     ctx.fillStyle = '#236618';
-    ctx.fillRect(hx - 8, upY + 5, 16, 6);
-    // Dark top of head
+    ctx.fillRect(hsx - 8, upY + 5, 16, 6);
     ctx.fillStyle = '#122808';
-    ctx.fillRect(hx - 8, upY,     16, 6);
+    ctx.fillRect(hsx - 8, upY,     16, 6);
     ctx.fillStyle = '#1a4010';
-    ctx.fillRect(hx - 7, upY + 1, 14, 4);
-    // Red inner gum (upper)
+    ctx.fillRect(hsx - 7, upY + 1, 14, 4);
     if(open > 0.05){
       ctx.fillStyle = `rgba(150,22,12,${open * 0.85})`;
-      ctx.fillRect(hx - 7, upY + 5, 14, 5);
+      ctx.fillRect(hsx - 7, upY + 5, 14, 5);
     }
-    // Upper teeth (point downward)
+    // Upper teeth (pointing down)
     ctx.fillStyle = '#dce8c0';
     for(let t = -6; t <= 6; t += 4){
       const th = (1 + open * 3.5)|0;
-      ctx.fillRect(hx + t - 1, upY + 9, 2, th + 1);
+      ctx.fillRect(hsx + t - 1, upY + 9, 2, th + 1);
       ctx.fillStyle = '#a0b88a';
-      ctx.fillRect(hx + t,     upY + 9, 1, th);
+      ctx.fillRect(hsx + t,     upY + 9, 1, th);
       ctx.fillStyle = '#dce8c0';
     }
 
-    // ── Eyes (glow brighter when hungry / about to snap) ────────────────────
-    const hunger  = 1 - open;                  // 0 = idle, 1 = fully closed/hungry
+    // ── Eyes ────────────────────────────────────────────────────────────────
+    const hunger   = 1 - open;
     const eyePulse = 0.7 + 0.3 * Math.sin(plant.bobAngle * 0.9);
-    const eyeR    = (80 + hunger * 175)|0;
-    const eyeG    = (20 - hunger * 15)|0;
-    const eyeA    = (0.55 + hunger * 0.45) * eyePulse;
+    const eyeR = (80 + hunger * 175)|0;
+    const eyeG = Math.max(0, (20 - hunger * 15))|0;
+    const eyeA = (0.55 + hunger * 0.45) * eyePulse;
     ctx.fillStyle = `rgba(${eyeR},${eyeG},0,${eyeA})`;
-    ctx.fillRect(hx - 7, upY + 1, 4, 4);
-    ctx.fillRect(hx + 3,  upY + 1, 4, 4);
-    // Highlight dot
+    ctx.fillRect(hsx - 7, upY + 1, 4, 4);
+    ctx.fillRect(hsx + 3,  upY + 1, 4, 4);
     ctx.fillStyle = `rgba(255,180,80,${hunger * 0.6})`;
-    ctx.fillRect(hx - 7, upY + 1, 1, 1);
-    ctx.fillRect(hx + 3,  upY + 1, 1, 1);
+    ctx.fillRect(hsx - 7, upY + 1, 1, 1);
+    ctx.fillRect(hsx + 3,  upY + 1, 1, 1);
 
-    // ── Depth spots (appear more at greater depth) ───────────────────────────
+    // ── Depth spots ─────────────────────────────────────────────────────────
     if(density > 0.4){
       ctx.fillStyle = `rgba(80,200,40,${density * 0.45})`;
-      ctx.fillRect(hx - 4, upY + 5, 2, 2);
-      ctx.fillRect(hx + 2, upY + 6, 2, 2);
-      ctx.fillRect(hx - 2, upY + 4, 2, 1);
+      ctx.fillRect(hsx - 4, upY + 5, 2, 2);
+      ctx.fillRect(hsx + 2, upY + 6, 2, 2);
+      ctx.fillRect(hsx - 2, upY + 4, 2, 1);
     }
 
-    // ── Warning ring when player is nearby but plant is still opening ────────
-    if(plant.state === 'open' && plant.mouthOpen < 0.72 && open < 0.72){
-      const warn = 1 - open / 0.72;
-      ctx.strokeStyle = `rgba(255,90,0,${warn * 0.4})`;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([3, 4]);
-      ctx.beginPath(); ctx.arc(hx, jawY - 6, PLANT_AGRO * 0.75, 0, Math.PI*2); ctx.stroke();
-      ctx.setLineDash([]);
+    // ── Tracking arc — shows agro radius around head when idle-tracking ──────
+    if(plant.state === 'open'){
+      // Distance head is from rest — non-zero means it's actively tracking
+      const rdx = plant.headX - plant.x;
+      const rdy = plant.headY - plant.restY;
+      const stretch = Math.sqrt(rdx*rdx + rdy*rdy);
+      if(stretch > 6){
+        const warn = Math.min(1, stretch / PLANT_MAX_REACH);
+        ctx.strokeStyle = `rgba(255,90,0,${warn * 0.35})`;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath(); ctx.arc(hsx, loY - 4, PLANT_AGRO, 0, Math.PI*2); ctx.stroke();
+        ctx.setLineDash([]);
+      }
     }
   }
 }
