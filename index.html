@@ -903,14 +903,69 @@ function drawCastleWall(){
     for(let col=-1;col<=Math.ceil(W/bW)+1;col++){
       const bx=Math.round(col*bW+off);
       if(bx+bW<0||bx>W||wy+bH<0||wy>H) continue;
+
+      // Brick tile base
       ctx.fillStyle=shade;
       ctx.fillRect(bx,wy,bW-2,bH-2);
+
+      // Mortar / seams
       ctx.fillStyle='#141210';
       ctx.fillRect(bx,wy+bH-2,bW,2);
       ctx.fillRect(bx+bW-2,wy,2,bH);
-      if(hash2(row,col)<0.12){
+
+      // Small pockmarks / chips
+      const h0=hash2(row,col);
+      if(h0<0.22){
+        ctx.fillStyle='rgba(0,0,0,0.22)';
+        const px=(bx+4+((h0*999)|0)%22)|0, py=(wy+3+(((h0*777)|0)%9))|0;
+        ctx.fillRect(px,py,2,1);
+        if(h0<0.11) ctx.fillRect(px+3,py+4,1,1);
+      }
+
+      // Window slits + larger windows (deterministic)
+      const hw=hash2(row*3, col*7);
+      const wx=bx+10+((hash2(row,col*13)*10)|0);
+      // Small slit
+      if(hw<0.10){
         ctx.fillStyle='#0e0c0a';
-        ctx.fillRect(bx+8,wy+4,1,6);
+        ctx.fillRect(wx,wy+4,1,6);
+        // subtle rim highlight
+        ctx.fillStyle='rgba(120,100,70,0.18)';
+        ctx.fillRect(wx-1,wy+4,1,6);
+      }
+      // Larger arched window (rare)
+      else if(hw>0.965){
+        const cx=(bx + (bW>>1))|0;
+        const w=10,h=12, top=(wy+2)|0;
+        // glow (moonlight or torchlight depending on depth)
+        const glow = Math.min(0.35, 0.12 + (Math.min(1,Math.abs(S.score)/4500))*0.22);
+        const g=ctx.createRadialGradient(cx,top+6,0,cx,top+6,18);
+        g.addColorStop(0,`rgba(255,210,110,${glow})`);
+        g.addColorStop(1,'rgba(255,160,40,0)');
+        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,top+6,18,0,Math.PI*2); ctx.fill();
+
+        // window void
+        ctx.fillStyle='#0b0908';
+        ctx.fillRect(cx-(w>>1), top+3, w, h-3);
+        ctx.fillRect(cx-3, top+2, 6, 1); // arch cap
+        ctx.fillRect(cx-2, top+1, 4, 1);
+
+        // stone frame
+        ctx.fillStyle='#3a332c';
+        ctx.fillRect(cx-(w>>1)-1, top+3, 1, h-2);
+        ctx.fillRect(cx+(w>>1),   top+3, 1, h-2);
+        ctx.fillRect(cx-(w>>1)-1, top+h, w+2, 1);
+        ctx.fillRect(cx-3, top+2, 1, 1); ctx.fillRect(cx+2, top+2, 1, 1);
+
+        // inner warm pixels
+        ctx.fillStyle='rgba(255,200,90,0.35)';
+        ctx.fillRect(cx-2, top+6, 1, 2);
+        ctx.fillRect(cx+1, top+7, 1, 1);
+
+        // simple cross bars
+        ctx.fillStyle='rgba(40,30,20,0.55)';
+        ctx.fillRect(cx, top+4, 1, h-5);
+        ctx.fillRect(cx-(w>>1)+1, top+8, w-2, 1);
       }
     }
   }
@@ -953,35 +1008,70 @@ function drawWalls(){
 
 function drawPlatform(p){
   const sy=(p.y-S.cam)|0;
-  if(p.icy){
-    ctx.fillStyle='#445566';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
-    ctx.fillStyle='#7aaccc';ctx.fillRect(p.x|0,sy,p.w|0,4);
-    ctx.fillStyle='#aaddee';ctx.fillRect(p.x|0,sy,p.w|0,2);
-    ctx.fillStyle='#cceeff';
-    for(let i=6;i<p.w-4;i+=14) ctx.fillRect((p.x+i)|0,sy+1,4,2);
-    ctx.fillStyle='rgba(180,230,255,0.12)';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
-    ctx.fillStyle='#334455';ctx.fillRect((p.x+2)|0,(sy+p.h)|0,p.w|0,4);
-  } else {
-    ctx.fillStyle='#44403a';ctx.fillRect(p.x|0,sy,p.w|0,p.h);
-    ctx.fillStyle='#6a6258';ctx.fillRect(p.x|0,sy,p.w|0,4);
-    ctx.fillStyle='#7a7268';ctx.fillRect(p.x|0,sy,p.w|0,2);
-    ctx.fillStyle='#50483e';
-    for(let i=4;i<p.w-4;i+=18) ctx.fillRect((p.x+i)|0,sy-5,10,6);
-    ctx.fillStyle='#33302a';
-    ctx.fillRect(p.x|0,sy+6,p.w|0,2);
-    for(let i=20;i<p.w;i+=20) ctx.fillRect((p.x+i)|0,sy,2,p.h);
-    ctx.fillStyle='rgba(0,0,0,0.25)';ctx.fillRect((p.x+2)|0,(sy+p.h)|0,p.w|0,4);
-    if(p.checkpoint){
-      // checkpoint banner
-      const bx=(p.x+p.w/2)|0;
-      ctx.fillStyle='#332211';ctx.fillRect(bx-1,sy-34,2,34);
-      ctx.fillStyle='#ffdd00';ctx.fillRect(bx,sy-34,1,34);
-      ctx.fillStyle='#882222';ctx.fillRect(bx+1,sy-32,14,10);
-      ctx.fillStyle='#cc4444';ctx.fillRect(bx+2,sy-31,12,8);
-      ctx.fillStyle='#ffdd00';ctx.fillRect(bx+4,sy-29,2,2);
-    }
+  const px=(v)=>v|0;
 
+  if(p.icy){
+    ctx.fillStyle='#445566';ctx.fillRect(px(p.x),sy,px(p.w),p.h);
+    ctx.fillStyle='#7aaccc';ctx.fillRect(px(p.x),sy,px(p.w),4);
+    ctx.fillStyle='#aaddee';ctx.fillRect(px(p.x),sy,px(p.w),2);
+
+    // frosty sparkles
+    ctx.fillStyle='#cceeff';
+    for(let i=6;i<p.w-4;i+=14) ctx.fillRect(px(p.x+i),sy+1,4,2);
+
+    // ice cracks (deterministic per platform)
+    const h=hash2(p.id,17);
+    ctx.fillStyle='rgba(230,250,255,0.25)';
+    const c1=px(p.x+6 + h*(p.w-18));
+    ctx.fillRect(c1,sy+3,1,6);
+    ctx.fillRect(c1-4,sy+5,4,1);
+    if(h>0.6){ ctx.fillRect(c1+1,sy+6,3,1); }
+
+    ctx.fillStyle='rgba(180,230,255,0.12)';ctx.fillRect(px(p.x),sy,px(p.w),p.h);
+    ctx.fillStyle='#334455';ctx.fillRect(px(p.x+2),px(sy+p.h),px(p.w),4);
+  } else {
+    // base stone
+    ctx.fillStyle='#44403a';ctx.fillRect(px(p.x),sy,px(p.w),p.h);
+    // bevel
+    ctx.fillStyle='#6a6258';ctx.fillRect(px(p.x),sy,px(p.w),4);
+    ctx.fillStyle='#7a7268';ctx.fillRect(px(p.x),sy,px(p.w),2);
+
+    // top stones
+    ctx.fillStyle='#50483e';
+    for(let i=4;i<p.w-4;i+=18) ctx.fillRect(px(p.x+i),sy-5,10,6);
+
+    // cracks + chips (deterministic)
+    const h1=hash2(p.id,21), h2=hash2(p.id,22), h3=hash2(p.id,23);
+    ctx.fillStyle='rgba(0,0,0,0.22)';
+    const cx=px(p.x+6 + h1*(p.w-18));
+    ctx.fillRect(cx,sy+2,1,10);
+    ctx.fillRect(cx-6,sy+6,6,1);
+    if(h2>0.5) ctx.fillRect(cx+1,sy+8,5,1);
+    // chipped corner pixels
+    if(h3<0.6){ ctx.fillRect(px(p.x+3),sy+9,2,1); }
+    if(h3>0.35){ ctx.fillRect(px(p.x+p.w-6),sy+7,2,1); }
+
+    // inner seam + columns
+    ctx.fillStyle='#33302a';
+    ctx.fillRect(px(p.x),sy+6,px(p.w),2);
+    for(let i=20;i<p.w;i+=20) ctx.fillRect(px(p.x+i),sy,2,p.h);
+
+    // bottom shadow
+    ctx.fillStyle='rgba(0,0,0,0.25)';ctx.fillRect(px(p.x+2),px(sy+p.h),px(p.w),4);
+
+    if(p.checkpoint){
+      // checkpoint banner (medieval pixel)
+      const bx=px(p.x+p.w/2);
+      ctx.fillStyle='#2b1f12';ctx.fillRect(bx-1,sy-34,2,34);
+      ctx.fillStyle='#6a4a22';ctx.fillRect(bx,sy-34,1,34);
+      ctx.fillStyle='#552222';ctx.fillRect(bx+1,sy-32,14,10);
+      ctx.fillStyle='#aa3333';ctx.fillRect(bx+2,sy-31,12,8);
+      ctx.fillStyle='#ffdd00';ctx.fillRect(bx+4,sy-29,2,2);
+      ctx.fillStyle='rgba(255,220,120,0.18)';ctx.fillRect(bx+2,sy-32,12,1);
+    }
   }
+
+  // Torches intentionally drawn elsewhere in the frame for correct layering.
 }
 
 function drawSpikesOnPlat(p) {
