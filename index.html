@@ -598,20 +598,25 @@ function gen(s){
   // Spawn slimes when in range and pool is low
   const absScoreNow = Math.abs(s.score);
   if(absScoreNow >= SLIME_START){
+    // Ramp from 1 up to SLIME_MAX over the next 4000 score after SLIME_START
+    const rampT   = Math.min(1, (absScoreNow - SLIME_START) / 4000);
+    const capNow  = Math.max(1, Math.round(rampT * SLIME_MAX));
     const liveSlimes = s.slimes.filter(sl=>!sl.dead).length;
-    let toSpawn = SLIME_MAX - liveSlimes;
+    let toSpawn = capNow - liveSlimes;
     while(toSpawn-- > 0){
-      // Pick a random visible platform that has clearance
+      // Only use platforms just off-screen so slimes walk/hop into view naturally.
+      // Allow a small band above AND below the viewport.
       const candidates = s.plats.filter(p => {
         if(p.safe || p.checkpoint) return false;
+        if(p.w < 24) return false;
         const sy = p.y - s.cam;
-        return sy > -50 && sy < H + 80 && p.w > 24;
+        const offTop    = sy >= -(H * 0.55) && sy < -30;   // just above screen
+        const offBottom = sy >  H + 30      && sy <= H * 1.55; // just below screen
+        return offTop || offBottom;
       });
       if(!candidates.length) break;
-      const p = candidates[Math.floor(Math.random() * candidates.length)];
+      const p  = candidates[Math.floor(Math.random() * candidates.length)];
       const sx = p.x + 12 + Math.random() * (p.w - 24);
-      // Don't spawn on top of the player
-      if(Math.abs(sx - s.pl.x) < 60 && Math.abs(p.y - s.pl.y) < 80) continue;
       s.slimes.push(mkSlime(sx, p.y));
     }
   }
