@@ -1,0 +1,35 @@
+# Castle Climber required sprite list
+# Format: sprite_name    dimensions    usage
+
+trebuchet_arm       16x16   upgrade/shop icon
+wizard_sight        16x16   upgrade/shop icon
+iron_sabatons       16x16   upgrade/shop icon
+featherfall_rune    16x16   upgrade/shop icon
+runed_gauntlets     16x16   upgrade/shop icon
+gilded_aura         16x16   upgrade/shop icon
+fortune_blessing    16x16   upgrade/shop icon
+hourglass_rune      16x16   upgrade/shop icon
+cape_of_control     16x16   upgrade/shop icon
+royal_tithe         16x16   upgrade/shop icon
+vitality_oath       16x16   upgrade/shop icon
+ironflesh_ward      16x16   upgrade/shop icon
+winged_boots        16x16   upgrade/shop icon
+warding_sigil       16x16   upgrade/shop icon
+blessed_grounds     16x16   upgrade/shop icon
+spore_ward          16x16   upgrade/shop icon
+keen_edge           16x16   upgrade/shop icon
+battle_cadence      16x16   upgrade/shop icon
+checkpoint_up       16x16   upgrade/shop icon
+checkpoint_down     16x16   upgrade/shop icon
+pause_button        18x18   pause button
+resume_button       18x18   resume button
+attack_button       24x24   attack button
+coin                12x12   HUD gold display
+heart               12x12   HUD health display
+chronos_seal        16x16   artifact icon
+divine_shield       16x16   relic icon
+gold_rune           16x16   rune icon
+vitality_rune       16x16   rune icon
+defense_rune        16x16   rune icon
+
+hallowed_resonator  16x16   relic icon

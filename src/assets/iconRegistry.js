@@ -1,0 +1,36 @@
+(function(){
+  'use strict';
+  window.ICON_SPRITES = {
+    trebuchet_arm:    { src: './assets/ui/trebuchet_arm.png',    w: 16, h: 16 },
+    wizard_sight:     { src: './assets/ui/wizard_sight.png',     w: 16, h: 16 },
+    iron_sabatons:    { src: './assets/ui/iron_sabatons.png',    w: 16, h: 16 },
+    featherfall_rune: { src: './assets/ui/featherfall_rune.png', w: 16, h: 16 },
+    runed_gauntlets:  { src: './assets/ui/runed_gauntlets.png',  w: 16, h: 16 },
+    gilded_aura:      { src: './assets/ui/gilded_aura.png',      w: 16, h: 16 },
+    fortune_blessing: { src: './assets/ui/fortune_blessing.png', w: 16, h: 16 },
+    hourglass_rune:   { src: './assets/ui/hourglass_rune.png',   w: 16, h: 16 },
+    cape_of_control:  { src: './assets/ui/cape_of_control.png',  w: 16, h: 16 },
+    royal_tithe:      { src: './assets/ui/royal_tithe.png',      w: 16, h: 16 },
+    vitality_oath:    { src: './assets/ui/vitality_oath.png',    w: 16, h: 16 },
+    ironflesh_ward:   { src: './assets/ui/ironflesh_ward.png',   w: 16, h: 16 },
+    winged_boots:     { src: './assets/ui/winged_boots.png',     w: 16, h: 16 },
+    warding_sigil:    { src: './assets/ui/warding_sigil.png',    w: 16, h: 16 },
+    blessed_grounds:  { src: './assets/ui/blessed_grounds.png',  w: 16, h: 16 },
+    spore_ward:       { src: './assets/ui/spore_ward.png',       w: 16, h: 16 },
+    keen_edge:        { src: './assets/ui/keen_edge.png',        w: 16, h: 16 },
+    battle_cadence:   { src: './assets/ui/battle_cadence.png',   w: 16, h: 16 },
+    checkpoint_up:    { src: './assets/ui/checkpoint_up.png',    w: 16, h: 16 },
+    checkpoint_down:  { src: './assets/ui/checkpoint_down.png',  w: 16, h: 16 },
+    pause_button:     { src: './assets/ui/pause_button.png',     w: 18, h: 18 },
+    resume_button:    { src: './assets/ui/resume_button.png',    w: 18, h: 18 },
+    attack_button:    { src: './assets/ui/attack_button.png',    w: 24, h: 24 },
+    coin:             { src: './assets/ui/coin.png',             w: 12, h: 12 },
+    heart:            { src: './assets/ui/heart.png',            w: 12, h: 12 },
+    chronos_seal:     { src: './assets/ui/chronos_seal.png',     w: 16, h: 16 },
+    divine_shield:    { src: './assets/ui/divine_shield.png',    w: 16, h: 16 },
+    hallowed_resonator:{ src: './assets/ui/hallowed_resonator.png',w: 16, h: 16 },
+    gold_rune:        { src: './assets/ui/gold_rune.png',        w: 16, h: 16 },
+    vitality_rune:    { src: './assets/ui/vitality_rune.png',    w: 16, h: 16 },
+    defense_rune:     { src: './assets/ui/defense_rune.png',     w: 16, h: 16 }
+  };
+})();
